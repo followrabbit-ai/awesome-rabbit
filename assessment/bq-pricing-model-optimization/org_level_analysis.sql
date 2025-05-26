@@ -13,8 +13,8 @@
 --     - If you only have access to specific projects and want to analyze those,
 --       use the client_side_analysis_project_level.sql script instead.
 --
--- Slot Hour Price:
---   - For the estimated_slot_hour_price parameter, use the official list price
+-- On demand and Slot-based Price:
+--   - For the price parameters, use the official list price
 --     for your region from the BigQuery Pricing page:
 --     https://cloud.google.com/bigquery/pricing
 --   - If your organization has custom pricing (e.g., due to commitments or
@@ -23,10 +23,11 @@
 -- Parameters:
 --   ${region}: The region to analyze
 --   ${estimated_slot_hour_price}: The estimated hourly cost of a BigQuery slot
+--   ${ondemand_slot_price}: The on-demand slot price per TB (default: 6.25 USD for most regions)
 WITH base AS (
   SELECT 
     * 
-    , total_bytes_billed / 1024/ 1024 / 1024 / 1024 * 6.25 AS ondemand_cost
+    , total_bytes_billed / 1024/ 1024 / 1024 / 1024 * ${ondemand_slot_price} AS ondemand_cost
     , IF(reservation_id IS NULL OR reservation_id = 'default-pipeline', 'on_demand', 'slot_based') AS actual_pricing_model
     , total_slot_ms/1000/3600 * ${estimated_slot_hour_price} / 0.7 AS  slot_based_cost
   FROM `region-${region}`.INFORMATION_SCHEMA.JOBS_BY_ORGANIZATION
