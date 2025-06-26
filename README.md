@@ -10,5 +10,5 @@ This repository aims to provide tools, scripts, and code snippets for current an
 - [assessment/bq-pricing-model-optimization](assessment/bq-pricing-model-optimization/):
   - SQL scripts for analyzing and optimizing BigQuery pricing models at both the project and organization level.
 
-- [gcs-insights-and-usage-logs](assessment/bq-pricing-model-optimization/):
+- [gcs-insights-and-usage-logs](gcs-insights-and-usage-logs/):
   - Rabbit is capable of providing deep folder or object level insights and storage class recommendations with automated class management based on the access patterns. In order to do this, we need to enable Storage Insights and Usage Logs on the target buckets. This Terraform module is designed to configure Google Cloud Storage Insights and Usage Logs for specified target buckets. It automates the setup of necessary resources, including report buckets, IAM roles, and report configurations.
