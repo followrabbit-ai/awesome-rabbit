@@ -23,15 +23,16 @@
 -- Parameters:
 --   ${region}: The region to analyze
 --   ${estimated_slot_hour_price}: The estimated hourly cost of a BigQuery slot
---   ${ondemand_slot_price}: The on-demand slot price per TB (default: 6.25 USD for most regions)
+--   ${ondemand_price}: The on-demand slot price per TB (default: 6.25 USD for most regions)
 WITH base AS (
   SELECT 
     * 
-    , total_bytes_billed / 1024/ 1024 / 1024 / 1024 * ${ondemand_slot_price} AS ondemand_cost
+    , total_bytes_billed / 1024/ 1024 / 1024 / 1024 * ${ondemand_price} AS ondemand_cost
     , IF(reservation_id IS NULL OR reservation_id = 'default-pipeline', 'on_demand', 'slot_based') AS actual_pricing_model
     , total_slot_ms/1000/3600 * ${estimated_slot_hour_price} / 0.7 AS  slot_based_cost
   FROM `region-${region}`.INFORMATION_SCHEMA.JOBS_BY_ORGANIZATION
   WHERE TIMESTAMP_TRUNC(creation_time, DAY) >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY) 
+    AND job_type = 'QUERY'
 ),
 
 add_optimal_pricing AS (
