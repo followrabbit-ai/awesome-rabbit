@@ -5,6 +5,7 @@ import * as readline from 'readline';
 import { BackupService } from './backup';
 import { ListBackupsService } from './list-backups';
 import { DeleteBackupsService } from './delete-backups';
+import { RestoreService } from './restore';
 import { createLogger, parseLogLevel, LogLevel } from './logger';
 import { parseTimestamp } from './utils';
 
@@ -206,6 +207,108 @@ program
       logger.info('All selected backups have been deleted successfully.');
     } catch (error) {
       logger.error('Failed to delete backups:', error);
+      process.exit(1);
+    }
+  });
+
+// Restore command
+program
+  .command('restore')
+  .description('Restore datasets from backups')
+  .requiredOption('--project-id <projectId>', 'GCP project ID')
+  .option('--backup-timestamp <timestamp>', 'ISO 8601 timestamp of the backup to restore. If omitted, lists available backups for selection')
+  .option('--overwrite', 'Overwrite existing tables if they exist', false)
+  .option('--log-level <level>', 'Logging level: debug, info, warn, error. Default: info', 'info')
+  .action(async (options: { projectId: string; backupTimestamp?: string; targetDataset?: string; overwrite: boolean; logLevel: string }) => {
+    let logLevel: LogLevel;
+    try {
+      logLevel = parseLogLevel(options.logLevel);
+    } catch (error) {
+      console.error(`Invalid log level: ${error}`);
+      process.exit(1);
+    }
+    
+    const logger = createLogger(logLevel);
+
+    try {
+      const listService = new ListBackupsService(options.projectId, logger);
+      const restoreService = new RestoreService(options.projectId, logger);
+      const deleteService = new DeleteBackupsService(options.projectId, logger);
+      
+      let backupTimestamp: Date | undefined;
+
+      if (options.backupTimestamp) {
+        // Parse provided timestamp
+        try {
+          backupTimestamp = parseTimestamp(options.backupTimestamp);
+        } catch (error) {
+          logger.error(`Invalid timestamp format: ${error}`);
+          process.exit(1);
+        }
+      } else {
+        // List backups and let user choose
+        logger.info(`Listing backups in project: ${options.projectId}...\n`);
+        
+        const backups = await listService.listBackups();
+        
+        if (backups.length === 0) {
+          logger.info('No backup datasets found in this project.');
+          process.exit(0);
+        }
+
+        // Group backups by timestamp
+        const groups = deleteService.groupBackupsByTimestamp(backups);
+        
+        // Display grouped backups
+        deleteService.displayBackupGroups(groups);
+        
+        // Prompt for selection
+        const selectedIndex = await deleteService.promptForSelection(groups.length);
+        const selectedGroup = groups[selectedIndex];
+        
+        backupTimestamp = selectedGroup.timestamp;
+        logger.info(`\nSelected backup timestamp: ${selectedGroup.timestampStr}`);
+      }
+
+      // Perform restore
+      logger.info('Starting restore operation...');
+      const results = await restoreService.restoreBackups({
+        projectId: options.projectId,
+        backupTimestamp,
+        overwrite: options.overwrite,
+      });
+
+      // Display results
+      logger.info('\nRestore Summary:');
+      let totalSuccess = 0;
+      let totalFailed = 0;
+      let totalTables = 0;
+
+      for (const result of results) {
+        if (result.success) {
+          totalSuccess++;
+          logger.info(`✓ ${result.sourceBackupDatasetId} -> ${result.targetDatasetId} (${result.tablesRestored} tables, ${result.materializedViewsRecreated} materialized views)`);
+        } else {
+          totalFailed++;
+          logger.error(`✗ ${result.sourceBackupDatasetId} -> ${result.targetDatasetId} (${result.tablesRestored} tables, ${result.materializedViewsRecreated} materialized views)`);
+          if (result.errors && result.errors.length > 0) {
+            for (const error of result.errors) {
+              logger.error(`  Error: ${error}`);
+            }
+          }
+        }
+        totalTables += result.tablesRestored;
+      }
+
+      logger.info(`\nTotal: ${results.length} backup dataset(s), ${totalTables} table(s) restored`);
+      if (totalFailed > 0) {
+        logger.warn(`${totalFailed} backup dataset(s) had errors`);
+        process.exit(1);
+      } else {
+        logger.info('All restores completed successfully!');
+      }
+    } catch (error) {
+      logger.error('Restore operation failed:', error);
       process.exit(1);
     }
   });

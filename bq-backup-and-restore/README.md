@@ -8,7 +8,9 @@ A command-line tool for creating and restoring backups of BigQuery datasets. Thi
 - Create backups of BigQuery datasets (all tables within a dataset)
 - Backup all datasets in a project or specific datasets
 - Create point-in-time backups using BigQuery's time travel feature (last 7 days)
-- Restore datasets from backups (coming soon)
+- List and manage backup datasets
+- Restore datasets from backups (interactive or with explicit timestamp)
+- Delete backups by timestamp
 
 ## Project Structure
 
@@ -363,20 +365,127 @@ If you enter 'q' or 'quit' when prompted, or answer 'no' to the confirmation, th
 
 ### Restore Functionality
 
-> **Note:** Restore functionality is currently under development and will be available in a future release.
+The `restore` command allows you to restore datasets from backup snapshots. You can restore to the original dataset name or specify a different target dataset.
 
-The restore functionality will allow you to:
-- Restore entire datasets from backup datasets
-- Restore specific tables from backups
-- Restore to a new dataset name
-- Restore point-in-time backups to their original or new locations
+#### Basic Usage
 
-**Planned features:**
-- `restore` command to restore from backup datasets
-- Validation of backup integrity before restore
-- Options to overwrite existing tables or create new ones
-- Support for restoring to different projects
-- Progress tracking and rollback capabilities
+**Restore with interactive backup selection:**
+```bash
+npm start restore --project-id=my-project-id
+```
+
+**Restore with explicit backup timestamp:**
+```bash
+npm start restore --project-id=my-project-id --backup-timestamp="2024-12-15T14:30:22Z"
+```
+
+**Restore with overwrite (replace existing tables):**
+```bash
+npm start restore --project-id=my-project-id --backup-timestamp="2024-12-15T14:30:22Z" --overwrite
+```
+
+#### Command Options
+
+| Option | Required | Description | Example |
+|--------|----------|-------------|---------|
+| `--project-id` | Yes | GCP project ID | `--project-id=my-gcp-project` |
+| `--backup-timestamp` | No | ISO 8601 timestamp of the backup to restore. If omitted, lists available backups for interactive selection | `--backup-timestamp="2024-12-15T14:30:22Z"` |
+| `--overwrite` | No | Overwrite existing tables if they exist. Default: false (fails if table exists) | `--overwrite` |
+| `--log-level` | No | Logging level: debug, info, warn, error. Default: info | `--log-level=debug` |
+
+#### Examples
+
+**Example 1: Interactive restore (no timestamp specified)**
+```bash
+npm start restore --project-id=production-project
+```
+
+Output:
+```
+Listing backups in project: production-project...
+
+Found 3 backup timestamp(s):
+
+[1] 2024-12-15T14:30:22.000Z
+    Datasets (2):
+      - zzz_backup_20241215_143022_analytics (source: analytics)
+      - zzz_backup_20241215_143022_warehouse (source: warehouse)
+
+[2] 2024-12-14T10:00:00.000Z
+    Datasets (1):
+      - zzz_backup_20241214_100000_staging (source: staging)
+
+Select backup timestamp to restore (1-2, or 'q' to quit): 1
+
+Selected backup timestamp: 2024-12-15T14:30:22.000Z
+Starting restore operation...
+Found 2 backup dataset(s) for timestamp 2024-12-15T14:30:22.000Z
+Restoring from backup: zzz_backup_20241215_143022_analytics
+  - Found 12 table(s) to restore
+  - Target dataset: analytics
+  - Restored table: users_table ✓
+  - Restored table: orders_table ✓
+  ...
+  - Recreating materialized views in dataset analytics...
+  - Found 3 materialized view(s) to recreate in dataset analytics
+  - Recreated materialized view: mv_reservation_hourly ✓
+  - Recreated materialized view: mv_usage_summary ✓
+  - Recreated materialized view: mv_daily_stats ✓
+  - Successfully restored 12 table(s) to analytics
+  - Recreated 3 materialized view(s) in analytics
+Restore completed successfully!
+```
+
+**Example 2: Restore with explicit timestamp**
+```bash
+npm start restore \
+  --project-id=production-project \
+  --backup-timestamp="2024-12-15T14:30:22Z"
+```
+
+**Example 4: Restore with overwrite**
+```bash
+npm start restore \
+  --project-id=production-project \
+  --backup-timestamp="2024-12-15T14:30:22Z" \
+  --overwrite
+```
+
+This will replace existing tables if they already exist in the target dataset.
+
+#### How Restore Works
+
+1. **Snapshot to Table Conversion**: Restores convert snapshot tables back to regular tables
+2. **Table Cloning**: Uses BigQuery's `CLONE` operation for efficient restoration
+3. **Atomic Overwrite**: When `--overwrite` is used, `CREATE OR REPLACE TABLE` is used for atomic replacement (no time gap)
+4. **Dataset Creation**: Automatically creates the target dataset if it doesn't exist (uses location from backup)
+5. **Consistent Restoration**: All tables from the same backup timestamp are restored together
+6. **Materialized View Recreation**: After restoring tables, automatically recreates all materialized views in the restored datasets that reference the restored tables
+
+#### Materialized View Handling
+
+**Automatic Recreation:**
+- After restoring tables in a dataset, the tool automatically:
+  1. Scans the restored dataset for materialized views
+  2. Extracts the query definition and refresh settings from each materialized view
+  3. Deletes the existing materialized view
+  4. Recreates it with the same definition and settings
+
+This ensures that materialized views continue to work correctly after table restoration, as BigQuery requires materialized views to be recreated when their underlying tables are deleted and recreated.
+
+**Important Warning:**
+> ⚠️ **Materialized views outside restored datasets**: The tool only automatically recreates materialized views that are **within the same dataset** as the restored tables. If you have materialized views in other datasets that reference the restored tables, you must **manually recreate them** after the restore operation completes. These materialized views will fail with errors like:
+> ```
+> Materialized view project:other_dataset.mv_name references table project:restored_dataset.table_name 
+> which was deleted and recreated. The view must be deleted and recreated as well.
+> ```
+
+#### Important Notes
+
+- **Existing Tables**: By default, restore fails if target tables already exist. Use `--overwrite` to replace them
+- **Multiple Backups**: If multiple datasets were backed up at the same timestamp, all will be restored
+- **Location**: Target datasets are created in the same location as the backup dataset
+- **Materialized Views**: Automatically recreated in restored datasets. Views in other datasets must be manually recreated
 
 ## Troubleshooting
 
