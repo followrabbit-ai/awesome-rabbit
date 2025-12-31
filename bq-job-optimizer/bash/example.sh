@@ -61,3 +61,8 @@ echo "--------------------------------"
 echo "Executing a query without historical data"
 rabbit-bq query -q -n 0 --replace --nouse_legacy_sql --debug_mode "SELECT CURRENT_TIMESTAMP()"
 echo "--------------------------------"
+
+echo "--------------------------------"
+echo "Executing a query in dry run mode"
+rabbit-bq query -q -n 0 --replace --nouse_legacy_sql --dry_run --debug_mode "SELECT block_hash FROM \`bigquery-public-data.crypto_bitcoin_cash.transactions\` LIMIT 1000"
+echo "--------------------------------"
