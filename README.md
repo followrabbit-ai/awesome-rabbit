@@ -12,3 +12,6 @@ This repository aims to provide tools, scripts, and code snippets for current an
 
 - [gcs-insights-and-usage-logs](gcs-insights-and-usage-logs/):
   - Rabbit is capable of providing deep folder or object level insights and storage class recommendations with automated class management based on the access patterns. In order to do this, we need to enable Storage Insights and Usage Logs on the target buckets. This Terraform module is designed to configure Google Cloud Storage Insights and Usage Logs for specified target buckets. It automates the setup of necessary resources, including report buckets, IAM roles, and report configurations.
+
+- [bq-backup-and-restore](bq-backup-and-restore/):
+  - A command-line tool for creating and restoring backups of BigQuery datasets. Supports backing up all datasets in a project or specific datasets, with options for current state or point-in-time backups (last 7 days). Only backs up tables, excluding views, models, and other non-table objects.
