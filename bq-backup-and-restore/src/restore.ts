@@ -266,7 +266,7 @@ export class RestoreService {
     if (dryRun) {
       this.logger.info(`  [DRY RUN] Would restore table with query:\n${restoreQuery}`);
       return;
-    } else {
+    } else { 
     const [job] = await this.bq.createQueryJob({
       query: restoreQuery,
       useLegacySql: false,
