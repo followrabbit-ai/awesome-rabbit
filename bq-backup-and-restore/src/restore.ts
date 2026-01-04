@@ -7,6 +7,7 @@ export interface RestoreOptions {
   projectId: string;
   backupTimestamp?: Date;
   overwrite?: boolean;
+  dryRun?: boolean;
 }
 
 export interface RestoreResult {
@@ -151,21 +152,13 @@ export class RestoreService {
     viewId: string,
     query: string,
     enableRefresh?: boolean,
-    refreshIntervalMs?: number
+    refreshIntervalMs?: number,
+    dryRun?: boolean
   ): Promise<void> {
     const viewRef = `\`${this.bq.projectId}.${datasetId}.${viewId}\``;
-    const dataset = this.bq.dataset(datasetId);
-    const view = dataset.table(viewId);
-
-    // Delete existing materialized view
-    const [exists] = await view.exists();
-    if (exists) {
-      await view.delete();
-      this.logger.debug(`Deleted existing materialized view: ${viewRef}`);
-    }
-
+    
     // Recreate with same definition
-    let createQuery = `CREATE MATERIALIZED VIEW ${viewRef} AS\n${query}`;
+    let createQuery = `CREATE OR REPLACE MATERIALIZED VIEW ${viewRef} AS\n${query}`;
 
     // Add refresh options if they were set
     const options: string[] = [];
@@ -181,19 +174,24 @@ export class RestoreService {
 
     this.logger.debug(`Recreating materialized view with query:\n${createQuery}`);
 
-    const [job] = await this.bq.createQueryJob({
-      query: createQuery,
-      useLegacySql: false,
-    });
-
-    await job.promise();
+    if (dryRun) {
+      this.logger.info(`  [DRY RUN] Would recreate materialized view with query:\n${createQuery}`);
+      return;
+    } else {
+      const [job] = await this.bq.createQueryJob({
+        query: createQuery,
+        useLegacySql: false,
+      });
+      await job.promise();
+    }
+   
     this.logger.debug(`Materialized view recreated: ${viewRef}`);
   }
 
   /**
    * Recreates all materialized views in a dataset that reference restored tables
    */
-  async recreateMaterializedViewsInDataset(datasetId: string): Promise<number> {
+  async recreateMaterializedViewsInDataset(datasetId: string, dryRun?: boolean): Promise<number> {
     try {
       const materializedViews = await this.listMaterializedViews(datasetId);
       
@@ -212,7 +210,8 @@ export class RestoreService {
             mv.viewId,
             mv.query,
             mv.enableRefresh,
-            mv.refreshIntervalMs
+            mv.refreshIntervalMs,
+            dryRun
           );
           this.logger.info(`  - Recreated materialized view: ${mv.viewId} ✓`);
           recreatedCount++;
@@ -236,7 +235,8 @@ export class RestoreService {
     sourceTableId: string,
     targetDatasetId: string,
     targetTableId: string,
-    overwrite: boolean
+    overwrite: boolean,
+    dryRun?: boolean
   ): Promise<void> {
     const sourceTableRef = `\`${this.bq.projectId}.${sourceBackupDatasetId}.${sourceTableId}\``;
     const targetTableRef = `\`${this.bq.projectId}.${targetDatasetId}.${targetTableId}\``;
@@ -263,12 +263,17 @@ export class RestoreService {
 
     this.logger.debug(`Restoring table with query:\n${restoreQuery}`);
 
+    if (dryRun) {
+      this.logger.info(`  [DRY RUN] Would restore table with query:\n${restoreQuery}`);
+      return;
+    } else {
     const [job] = await this.bq.createQueryJob({
       query: restoreQuery,
       useLegacySql: false,
     });
 
-    await job.promise();
+      await job.promise();
+    }
     this.logger.debug(`Table restored: ${targetTableRef}`);
   }
 
@@ -323,12 +328,15 @@ export class RestoreService {
           // Get location from backup dataset
           const backupDataset = this.bq.dataset(backup.backupDatasetId);
           const [backupMetadata] = await backupDataset.getMetadata();
-          
-          await targetDataset.create({
-            location: backupMetadata.location || 'US',
-            description: `Restored from backup ${backup.backupDatasetId}`,
-          });
-          this.logger.info(`  - Created target dataset: ${result.targetDatasetId}`);
+          if (options.dryRun) {
+            this.logger.info(`  [DRY RUN] Would create target dataset: ${result.targetDatasetId} in location: ${backupMetadata.location || 'US'}`);
+          } else {
+            await targetDataset.create({
+              location: backupMetadata.location || 'US',
+                description: `Restored from backup ${backup.backupDatasetId}`,
+              });
+              this.logger.info(`  - Created target dataset: ${result.targetDatasetId}`);
+          }
         }
 
         // Restore each table
@@ -339,7 +347,8 @@ export class RestoreService {
               tableId,
               result.targetDatasetId,
               tableId, // Same table name
-              options.overwrite || false
+              options.overwrite || false,
+              options.dryRun
             );
             this.logger.info(`  - Restored table: ${tableId} ✓`);
             return { success: true, tableId };
@@ -358,7 +367,7 @@ export class RestoreService {
         
         // Recreate materialized views in the target dataset after tables are restored
         this.logger.info(`  - Recreating materialized views in dataset ${result.targetDatasetId}...`);
-        const materializedViewsRecreated = await this.recreateMaterializedViewsInDataset(result.targetDatasetId);
+        const materializedViewsRecreated = await this.recreateMaterializedViewsInDataset(result.targetDatasetId, options.dryRun);
         result.materializedViewsRecreated = materializedViewsRecreated;
 
         result.success = failed.length === 0;

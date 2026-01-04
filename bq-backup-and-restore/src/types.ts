@@ -3,6 +3,7 @@ export interface BackupOptions {
   datasets?: string[];
   timestamp?: Date;
   expirationDays?: number;
+  dryRun?: boolean;
 }
 
 export interface BackupResult {

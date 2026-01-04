@@ -25,7 +25,8 @@ program
   .option('--timestamp <timestamp>', 'ISO 8601 timestamp for point-in-time backup (must be within last 7 days)')
   .option('--expiration-days <days>', 'Number of days to retain snapshots. Default: 90 (3 months). Set to 0 for indefinite retention', '90')
   .option('--log-level <level>', 'Logging level: debug, info, warn, error. Default: info', 'info')
-  .action(async (options: { projectId: string; datasets?: string; timestamp?: string; expirationDays?: string; logLevel: string }) => {
+  .option('--dry-run', 'Show what would be done without making any changes', false)
+  .action(async (options: { projectId: string; datasets?: string; timestamp?: string; expirationDays?: string; logLevel: string; dryRun: boolean }) => {
     let logLevel: LogLevel;
     try {
       logLevel = parseLogLevel(options.logLevel);
@@ -73,6 +74,7 @@ program
         datasets,
         timestamp,
         expirationDays,
+        dryRun: options.dryRun,
       });
 
       // Display results
@@ -145,7 +147,8 @@ program
   .description('Delete backups by timestamp - lists backups grouped by timestamp and prompts for selection')
   .requiredOption('--project-id <projectId>', 'GCP project ID')
   .option('--log-level <level>', 'Logging level: debug, info, warn, error. Default: info', 'info')
-  .action(async (options: { projectId: string; logLevel: string }) => {
+  .option('--dry-run', 'Show what would be deleted without making any changes', false)
+  .action(async (options: { projectId: string; logLevel: string; dryRun: boolean }) => {
     let logLevel: LogLevel;
     try {
       logLevel = parseLogLevel(options.logLevel);
@@ -202,7 +205,7 @@ program
       }
 
       // Delete backups
-      await deleteService.deleteBackupsForTimestamp(selectedGroup.backups);
+      await deleteService.deleteBackupsForTimestamp(selectedGroup.backups, options.dryRun);
       
       logger.info('All selected backups have been deleted successfully.');
     } catch (error) {
@@ -219,7 +222,8 @@ program
   .option('--backup-timestamp <timestamp>', 'ISO 8601 timestamp of the backup to restore. If omitted, lists available backups for selection')
   .option('--overwrite', 'Overwrite existing tables if they exist', false)
   .option('--log-level <level>', 'Logging level: debug, info, warn, error. Default: info', 'info')
-  .action(async (options: { projectId: string; backupTimestamp?: string; targetDataset?: string; overwrite: boolean; logLevel: string }) => {
+  .option('--dry-run', 'Show what would be restored without making any changes', false)
+  .action(async (options: { projectId: string; backupTimestamp?: string; targetDataset?: string; overwrite: boolean; logLevel: string; dryRun: boolean }) => {
     let logLevel: LogLevel;
     try {
       logLevel = parseLogLevel(options.logLevel);
@@ -276,6 +280,7 @@ program
         projectId: options.projectId,
         backupTimestamp,
         overwrite: options.overwrite,
+        dryRun: options.dryRun,
       });
 
       // Display results

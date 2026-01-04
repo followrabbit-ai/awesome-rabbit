@@ -98,7 +98,7 @@ export class DeleteBackupsService {
   /**
    * Deletes a backup dataset
    */
-  async deleteBackupDataset(backupDatasetId: string): Promise<void> {
+  async deleteBackupDataset(backupDatasetId: string, dryRun: boolean): Promise<void> {
     const dataset = this.bq.dataset(backupDatasetId);
     
     const [exists] = await dataset.exists();
@@ -107,14 +107,18 @@ export class DeleteBackupsService {
       return;
     }
 
-    await dataset.delete({ force: true });
-    this.logger.info(`Deleted backup dataset: ${backupDatasetId}`);
+    if (dryRun) {
+      this.logger.info(`  [DRY RUN] Would delete: ${backupDatasetId}`);
+    } else {
+      await dataset.delete({ force: true });
+      this.logger.info(`Deleted backup dataset: ${backupDatasetId}`);
+    }
   }
 
   /**
    * Deletes all backups for a specific timestamp
    */
-  async deleteBackupsForTimestamp(backups: BackupInfo[]): Promise<void> {
+  async deleteBackupsForTimestamp(backups: BackupInfo[], dryRun: boolean): Promise<void> {
     this.logger.info(`\nDeleting ${backups.length} backup dataset(s)...`);
 
     let successCount = 0;
@@ -122,7 +126,7 @@ export class DeleteBackupsService {
 
     for (const backup of backups) {
       try {
-        await this.deleteBackupDataset(backup.backupDatasetId);
+        await this.deleteBackupDataset(backup.backupDatasetId, dryRun);
         successCount++;
       } catch (error) {
         errorCount++;

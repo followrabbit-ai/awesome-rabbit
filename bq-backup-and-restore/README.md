@@ -131,28 +131,47 @@ npm run build
 
 ## User Guide
 
+### Running Commands
+
+When using `npm start` to run commands, you must use `--` to separate npm arguments from script arguments. This tells npm to pass everything after `--` to the script.
+
+**Correct usage:**
+```bash
+npm start -- list-backups --project-id=my-project-id
+```
+
+**Alternative: Run the built binary directly**
+```bash
+node build/index.js list-backups --project-id=my-project-id
+```
+
+**Or use npx (if installed globally)**
+```bash
+npx bq-backup-and-restore list-backups --project-id=my-project-id
+```
+
 ### Backup Functionality
 
 #### Basic Usage
 
 **Backup all datasets in a project:**
 ```bash
-npm start backup --project-id=my-project-id
+npm start -- backup --project-id=my-project-id
 ```
 
 **Backup specific datasets:**
 ```bash
-npm start backup --project-id=my-project-id --datasets=dataset1,dataset2,dataset3
+npm start -- backup --project-id=my-project-id --datasets=dataset1,dataset2,dataset3
 ```
 
 **Backup current state (explicit):**
 ```bash
-npm start backup --project-id=my-project-id --datasets=my_dataset
+npm start -- backup --project-id=my-project-id --datasets=my_dataset
 ```
 
 **Backup point-in-time (last 7 days):**
 ```bash
-npm start backup --project-id=my-project-id --datasets=my_dataset --timestamp="2024-12-15T14:30:22Z"
+npm start -- backup --project-id=my-project-id --datasets=my_dataset --timestamp="2024-12-15T14:30:22Z"
 ```
 
 #### Command Options
@@ -164,12 +183,13 @@ npm start backup --project-id=my-project-id --datasets=my_dataset --timestamp="2
 | `--timestamp` | No | ISO 8601 timestamp for point-in-time backup. Must be within last 7 days. If omitted, backs up current state | `--timestamp="2024-12-15T14:30:22Z"` |
 | `--expiration-days` | No | Number of days to retain snapshots before automatic deletion. Default: 90 days (3 months). Set to 0 for indefinite retention (not recommended) | `--expiration-days=30` |
 | `--log-level` | No | Logging level: debug, info, warn, error. Default: info | `--log-level=debug` |
+| `--dry-run` | No | Show what would be done without making any changes | `--dry-run` |
 
 #### Examples
 
 **Example 1: Backup all datasets in a project**
 ```bash
-npm start backup --project-id=production-project
+npm start -- backup --project-id=production-project
 ```
 
 Output:
@@ -190,7 +210,7 @@ All tables backed up as snapshots at consistent timestamp: 2024-12-15T14:30:22Z
 
 **Example 2: Backup specific dataset with point-in-time**
 ```bash
-npm start backup \
+npm start -- backup \
   --project-id=production-project \
   --datasets=analytics \
   --timestamp="2024-12-15T10:00:00Z"
@@ -198,7 +218,7 @@ npm start backup \
 
 **Example 3: Backup multiple datasets**
 ```bash
-npm start backup \
+npm start -- backup \
   --project-id=production-project \
   --datasets=analytics,warehouse,staging
 ```
@@ -206,26 +226,36 @@ npm start backup \
 **Example 4: Backup with custom snapshot expiration**
 ```bash
 # Use default expiration (3 months / 90 days)
-npm start backup --project-id=production-project --datasets=analytics
+npm start -- backup --project-id=production-project --datasets=analytics
 
 # Custom expiration: 30 days
-npm start backup \
+npm start -- backup \
   --project-id=production-project \
   --datasets=analytics \
   --expiration-days=30
 
 # Custom expiration: 6 months (180 days)
-npm start backup \
+npm start -- backup \
   --project-id=production-project \
   --datasets=analytics \
   --expiration-days=180
 
 # Retain indefinitely (not recommended - will incur ongoing storage costs)
-npm start backup \
+npm start -- backup \
   --project-id=production-project \
   --datasets=analytics \
   --expiration-days=0
 ```
+
+**Example 5: Backup with dry-run (preview without making changes)**
+```bash
+npm start -- backup \
+  --project-id=production-project \
+  --datasets=analytics \
+  --dry-run
+```
+
+This will show what would be backed up without actually creating any backup datasets or snapshots.
 
 By default, snapshots expire after 3 months (90 days) to help manage storage costs. You can customize this or set to 0 for indefinite retention.
 
@@ -270,7 +300,7 @@ project-id/
 
 To see all backup datasets in a project:
 ```bash
-npm start list-backups --project-id=my-project-id
+npm start -- list-backups --project-id=my-project-id
 ```
 
 This will show:
@@ -282,7 +312,7 @@ This will show:
 
 You can also control logging verbosity:
 ```bash
-npm start list-backups --project-id=my-project-id --log-level=debug
+npm start -- list-backups --project-id=my-project-id --log-level=debug
 ```
 
 ### Delete Backups Functionality
@@ -293,7 +323,7 @@ The `delete-backups` command allows you to delete backups grouped by timestamp. 
 
 **Delete backups by timestamp:**
 ```bash
-npm start delete-backups --project-id=my-project-id
+npm start -- delete-backups --project-id=my-project-id
 ```
 
 The command will:
@@ -309,12 +339,13 @@ The command will:
 |--------|----------|-------------|---------|
 | `--project-id` | Yes | GCP project ID | `--project-id=my-gcp-project` |
 | `--log-level` | No | Logging level: debug, info, warn, error. Default: info | `--log-level=debug` |
+| `--dry-run` | No | Show what would be deleted without making any changes | `--dry-run` |
 
 #### Examples
 
 **Example 1: Delete backups interactively**
 ```bash
-npm start delete-backups --project-id=production-project
+npm start -- delete-backups --project-id=production-project
 ```
 
 Output:
@@ -351,10 +382,17 @@ All selected backups have been deleted successfully.
 
 **Example 2: Cancel deletion**
 ```bash
-npm start delete-backups --project-id=production-project
+npm start -- delete-backups --project-id=production-project
 ```
 
 If you enter 'q' or 'quit' when prompted, or answer 'no' to the confirmation, the operation will be cancelled.
+
+**Example 3: Delete with dry-run (preview without making changes)**
+```bash
+npm start -- delete-backups --project-id=production-project --dry-run
+```
+
+This will show what would be deleted without actually deleting any backup datasets.
 
 #### Safety Features
 
@@ -371,17 +409,17 @@ The `restore` command allows you to restore datasets from backup snapshots. You 
 
 **Restore with interactive backup selection:**
 ```bash
-npm start restore --project-id=my-project-id
+npm start -- restore --project-id=my-project-id
 ```
 
 **Restore with explicit backup timestamp:**
 ```bash
-npm start restore --project-id=my-project-id --backup-timestamp="2024-12-15T14:30:22Z"
+npm start -- restore --project-id=my-project-id --backup-timestamp="2024-12-15T14:30:22Z"
 ```
 
 **Restore with overwrite (replace existing tables):**
 ```bash
-npm start restore --project-id=my-project-id --backup-timestamp="2024-12-15T14:30:22Z" --overwrite
+npm start -- restore --project-id=my-project-id --backup-timestamp="2024-12-15T14:30:22Z" --overwrite
 ```
 
 #### Command Options
@@ -392,12 +430,14 @@ npm start restore --project-id=my-project-id --backup-timestamp="2024-12-15T14:3
 | `--backup-timestamp` | No | ISO 8601 timestamp of the backup to restore. If omitted, lists available backups for interactive selection | `--backup-timestamp="2024-12-15T14:30:22Z"` |
 | `--overwrite` | No | Overwrite existing tables if they exist. Default: false (fails if table exists) | `--overwrite` |
 | `--log-level` | No | Logging level: debug, info, warn, error. Default: info | `--log-level=debug` |
+| `--dry-run` | No | Show what would be restored without making any changes | `--dry-run` |
+| `--dry-run` | No | Show what would be restored without making any changes | `--dry-run` |
 
 #### Examples
 
 **Example 1: Interactive restore (no timestamp specified)**
 ```bash
-npm start restore --project-id=production-project
+npm start -- restore --project-id=production-project
 ```
 
 Output:
@@ -438,20 +478,30 @@ Restore completed successfully!
 
 **Example 2: Restore with explicit timestamp**
 ```bash
-npm start restore \
+npm start -- restore \
   --project-id=production-project \
   --backup-timestamp="2024-12-15T14:30:22Z"
 ```
 
 **Example 4: Restore with overwrite**
 ```bash
-npm start restore \
+npm start -- restore \
   --project-id=production-project \
   --backup-timestamp="2024-12-15T14:30:22Z" \
   --overwrite
 ```
 
 This will replace existing tables if they already exist in the target dataset.
+
+**Example 5: Restore with dry-run (preview without making changes)**
+```bash
+npm start -- restore \
+  --project-id=production-project \
+  --backup-timestamp="2024-12-15T14:30:22Z" \
+  --dry-run
+```
+
+This will show what would be restored, including which tables and materialized views would be recreated, without actually performing the restore operation.
 
 #### How Restore Works
 
@@ -515,16 +565,16 @@ This ensures that materialized views continue to work correctly after table rest
 Control logging verbosity using the `--log-level` option:
 ```bash
 # Debug level (most verbose)
-npm start backup --project-id=my-project --log-level=debug
+npm start -- backup --project-id=my-project --log-level=debug
 
 # Info level (default)
-npm start backup --project-id=my-project --log-level=info
+npm start -- backup --project-id=my-project --log-level=info
 
 # Warn level (only warnings and errors)
-npm start backup --project-id=my-project --log-level=warn
+npm start -- backup --project-id=my-project --log-level=warn
 
 # Error level (only errors)
-npm start backup --project-id=my-project --log-level=error
+npm start -- backup --project-id=my-project --log-level=error
 ```
 
 The tool uses [Winston](https://github.com/winstonjs/winston) for logging with colorized console output and structured formatting.

@@ -110,7 +110,8 @@ export class BackupService {
    */
   async createBackupDataset(
     backupDatasetId: string,
-    sourceLocation: string
+    sourceLocation: string,
+    dryRun: boolean = false
   ): Promise<Dataset> {
     const location = sourceLocation;
     const dataset = this.bq.dataset(backupDatasetId);
@@ -120,10 +121,15 @@ export class BackupService {
       throw new Error(`Backup dataset ${backupDatasetId} already exists`);
     }
 
-    await dataset.create({
-      location,
-      description: `Backup dataset created by bq-backup-and-restore`,
-    });
+    if (dryRun) {
+      this.logger.info(`  [DRY RUN] Would create backup dataset: ${backupDatasetId} in location: ${location}`);
+      return dataset;
+    } else {
+      await dataset.create({
+        location,
+        description: `Backup dataset created by bq-backup-and-restore`,
+      });
+    }
 
     this.logger.debug(`Created backup dataset: ${backupDatasetId} in location: ${location}`);
     return dataset;
@@ -138,7 +144,8 @@ export class BackupService {
     backupDatasetId: string,
     backupTableId: string,
     snapshotTimestamp: Date,
-    expirationTimestamp?: Date
+    expirationTimestamp?: Date,
+    dryRun?: boolean
   ): Promise<void> {
     const sourceTableRef = `\`${this.bq.projectId}.${sourceDatasetId}.${sourceTableId}\``;
     const backupTableRef = `\`${this.bq.projectId}.${backupDatasetId}.${backupTableId}\``;
@@ -155,12 +162,16 @@ export class BackupService {
 
     this.logger.debug(`Creating snapshot with query:\n${snapshotQuery}`);
 
-    const [job] = await this.bq.createQueryJob({
-      query: snapshotQuery,
-      useLegacySql: false,
-    });
-
-    await job.promise();
+    if (dryRun) {
+      this.logger.info(`  [DRY RUN] Would create snapshot with query:\n${snapshotQuery}`);
+      return;
+    } else {
+      const [job] = await this.bq.createQueryJob({
+        query: snapshotQuery,
+        useLegacySql: false,
+      });
+      await job.promise();
+    }
     this.logger.debug(`Snapshot created: ${backupTableRef}`);
   }
 
@@ -231,9 +242,11 @@ export class BackupService {
         if (!datasetInfo.location) {
           throw new Error(`Dataset ${datasetInfo.datasetId} does not have a location specified`);
         }
+
         await this.createBackupDataset(
           backupDatasetId,
-          datasetInfo.location
+          datasetInfo.location,
+          options.dryRun
         );
         this.logger.info(`  - Created backup dataset: ${backupDatasetId}`);
 
@@ -246,7 +259,8 @@ export class BackupService {
               backupDatasetId,
               table.tableId, // Same table name in backup
               backupTimestamp,
-              expirationTimestamp
+              expirationTimestamp,
+              options.dryRun
             );
             this.logger.info(
               `  - Created snapshot at ${backupTimestamp.toISOString()}: ${table.tableId} ✓`
@@ -278,11 +292,10 @@ export class BackupService {
         }
       } catch (error) {
         const errorMsg = `Error backing up dataset ${datasetInfo.datasetId}: ${error}`;
-        this.logger.error(errorMsg);
+        this.logger.error(errorMsg, error);
         result.errors = [errorMsg];
         result.success = false;
       }
-
       results.push(result);
     }
 
