@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: "npm"
+    directory: "/bq-backup-and-restore"
+    labels:
+      - "dependencies"
+    schedule:
+      interval: "daily"
+    commit-message:
+      prefix: "chore: "
+    target-branch: "master"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    labels:
+      - "dependencies"
+    schedule:
+      interval: "daily"
+    commit-message:
+      prefix: "chore: "
+    target-branch: "master"
