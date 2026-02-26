@@ -29,7 +29,7 @@
   },
   "dependencies": {
     "@google-cloud/bigquery": "^8.1.1",
-    "commander": "^14.0.0",
+    "commander": "^14.0.3",
     "winston": "^3.19.0"
   },
   "devDependencies": {
