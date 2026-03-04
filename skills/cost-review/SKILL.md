@@ -62,23 +62,23 @@ npm install -g @followrabbit/cli
 curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh
 ```
 
-**If already installed**, check for updates. Get the installed version and compare it to the latest release:
+**If already installed**, check for updates:
 
 ```bash
-# Get installed version
 followrabbit version --json
-
-# Get latest release version
-curl -fsSL "https://api.github.com/repos/followrabbit-ai/homebrew-tap/releases/latest" | grep '"tag_name"'
 ```
 
-If the installed version is behind the latest release, update using the same method it was installed with:
+Compare the `data.version` field against the latest release tag:
+
+```bash
+curl -fsSL "https://api.github.com/repos/followrabbit-ai/homebrew-tap/releases?per_page=1" | grep -m1 '"tag_name"'
+```
+
+If the installed version is behind, upgrade:
 
 - **Homebrew**: `brew upgrade followrabbit-ai/tap/followrabbit`
 - **npm**: `npm update -g @followrabbit/cli`
-- **Shell installer**: re-run `curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh`
-
-If you can't determine the install method, use the shell installer — it always installs the latest version.
+- **Otherwise**: re-run `curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh`
 
 After install or update, verify:
 
