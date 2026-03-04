@@ -90,7 +90,13 @@ Tell the user:
 
 Wait for the user to complete authentication before continuing.
 
-Also check quota from the auth status output. If the response includes quota information showing no remaining usage, inform the user their quota is exhausted and when it resets.
+Then check quota:
+
+```bash
+followrabbit status --json
+```
+
+If the quota usage shows no remaining budget, inform the user their quota is exhausted and when it resets.
 
 ## Step 3: Run the Cost Review
 
