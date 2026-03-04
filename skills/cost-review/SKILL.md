@@ -147,24 +147,36 @@ The JSON output uses this envelope structure:
     "request_id": "eng_...",
     "mode": "context",
     "cost_usd": 0.01,
-    "instructions": {
-      "cost-impact": "<markdown instructions>",
-      "partition-check": "<markdown instructions>",
-      "best-practices": "<markdown instructions>"
-    }
+    "skills": [
+      {
+        "id": "cost-impact",
+        "name": "Cost Impact Analysis",
+        "instructions": "<markdown instructions>"
+      },
+      {
+        "id": "partition-check",
+        "name": "Partition Check",
+        "instructions": "<markdown instructions>"
+      },
+      {
+        "id": "best-practices",
+        "name": "Best Practices",
+        "instructions": "<markdown instructions>"
+      }
+    ]
   }
 }
 ```
 
-The `data.instructions` object contains up to three skill areas:
+The `data.skills` array contains up to three skill areas:
 
-| Key | What it covers |
-|-----|---------------|
+| Skill ID | What it covers |
+|----------|---------------|
 | `cost-impact` | Compute sizing, storage costs, database costs, networking costs |
 | `partition-check` | BigQuery partitioning, clustering, and partition expiration |
 | `best-practices` | Missing labels, lifecycle rules, autoscaling, HA over-provisioning, network tier, committed use discounts |
 
-Each value is a markdown string with specific, actionable optimization instructions tailored to the scanned infrastructure.
+Each entry has an `id`, `name`, and `instructions` field. The `instructions` value is a markdown string with specific, actionable optimization instructions tailored to the scanned infrastructure.
 
 If the API's primary engine is unavailable, the response will have `"mode": "fallback"` and `"cost_usd": 0.0` — the instructions are still valid (loaded from static skill files) but not personalized to the specific context.
 
