@@ -1,0 +1,20 @@
+{
+  "name": "followrabbit",
+  "displayName": "FollowRabbit Cost Optimization",
+  "version": "1.0.0",
+  "description": "Cloud cost optimization for Terraform. Review changes for cost impact and auto-apply savings recommendations using the followrabbit CLI.",
+  "author": {
+    "name": "Rabbit",
+    "email": "support@followrabbit.ai"
+  },
+  "homepage": "https://github.com/followrabbit-ai/awesome-rabbit",
+  "keywords": [
+    "cloud",
+    "cost-optimization",
+    "terraform",
+    "gcp",
+    "finops"
+  ],
+  "license": "MIT",
+  "skills": "./skills/"
+}
