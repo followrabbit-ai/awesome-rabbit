@@ -59,7 +59,7 @@ npm install -g @followrabbit/cli
 3. **Fall back to the shell installer** (works everywhere):
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/followrabbit-ai/rabbit-agentic/main/cli/install.sh | sh
+curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh
 ```
 
 After installation, verify:
