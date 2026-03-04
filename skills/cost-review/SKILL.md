@@ -22,7 +22,7 @@ This skill guides you through performing a cost review using the `followrabbit` 
 - User says things like "is this expensive?", "check costs", "optimize spending", "review pricing"
 - During a code review involving cloud infrastructure files
 
-## Step 1: Ensure CLI Is Installed
+## Step 1: Ensure CLI Is Installed and Up to Date
 
 Check if the `followrabbit` binary is available:
 
@@ -30,7 +30,7 @@ Check if the `followrabbit` binary is available:
 which followrabbit
 ```
 
-If not found, install it automatically. Detect the best available method:
+**If not found**, install it. Detect the best available method:
 
 1. **Check for Homebrew** (preferred on macOS):
 
@@ -62,7 +62,25 @@ npm install -g @followrabbit/cli
 curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh
 ```
 
-After installation, verify:
+**If already installed**, check for updates. Get the installed version and compare it to the latest release:
+
+```bash
+# Get installed version
+followrabbit version --json
+
+# Get latest release version
+curl -fsSL "https://api.github.com/repos/followrabbit-ai/homebrew-tap/releases/latest" | grep '"tag_name"'
+```
+
+If the installed version is behind the latest release, update using the same method it was installed with:
+
+- **Homebrew**: `brew upgrade followrabbit-ai/tap/followrabbit`
+- **npm**: `npm update -g @followrabbit/cli`
+- **Shell installer**: re-run `curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh`
+
+If you can't determine the install method, use the shell installer — it always installs the latest version.
+
+After install or update, verify:
 
 ```bash
 followrabbit version --json
