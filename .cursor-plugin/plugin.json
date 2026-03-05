@@ -1,0 +1,24 @@
+{
+  "name": "followrabbit",
+  "displayName": "FollowRabbit Cost Optimization",
+  "version": "1.0.0",
+  "description": "Cloud cost optimization for GCP infrastructure. Review changes for cost impact and auto-apply savings recommendations using the followrabbit CLI.",
+  "author": {
+    "name": "Rabbit",
+    "email": "support@followrabbit.ai"
+  },
+  "homepage": "https://github.com/followrabbit-ai/awesome-rabbit",
+  "keywords": [
+    "cloud",
+    "cost-optimization",
+    "terraform",
+    "gcp",
+    "google-cloud",
+    "finops",
+    "infrastructure",
+    "bigquery",
+    "gke"
+  ],
+  "license": "MIT",
+  "logo": "assets/logo.png"
+}
