@@ -13,8 +13,12 @@
     "cost-optimization",
     "terraform",
     "gcp",
-    "finops"
+    "google-cloud",
+    "finops",
+    "infrastructure",
+    "bigquery",
+    "gke"
   ],
   "license": "MIT",
-  "skills": "./skills/"
+  "logo": "assets/logo.svg"
 }

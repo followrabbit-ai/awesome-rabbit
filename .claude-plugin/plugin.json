@@ -17,6 +17,8 @@
     "gcp",
     "google-cloud",
     "finops",
-    "infrastructure"
+    "infrastructure",
+    "bigquery",
+    "gke"
   ]
 }

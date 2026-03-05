@@ -50,5 +50,3 @@ Install via Cursor Settings > Plugins > search "followrabbit", or point Cursor t
 ## Agent
 
 - **cost-optimizer** — Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`.
-
-For detailed specifications, see [docs/prd-coding-agent-plugins.md](docs/prd-coding-agent-plugins.md).
