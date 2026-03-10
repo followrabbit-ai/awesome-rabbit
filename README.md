@@ -29,7 +29,7 @@ brew install followrabbit-ai/tap/followrabbit
 followrabbit auth login --key <YOUR_API_KEY>
 ```
 
-Get your API key at [followrabbit.ai](https://followrabbit.ai). The skill will auto-install the CLI if it's missing.
+Get your API key at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai). The skill will auto-install the CLI if it's missing.
 
 ## Installation
 
