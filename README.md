@@ -15,3 +15,38 @@ This repository aims to provide tools, scripts, and code snippets for current an
 
 - [bq-backup-and-restore](bq-backup-and-restore/):
   - A command-line tool for creating and restoring backups of BigQuery datasets. Supports backing up all datasets in a project or specific datasets, with options for current state or point-in-time backups (last 7 days). Only backs up tables, excluding views, models, and other non-table objects.
+
+# Coding Agent Plugins
+
+This repository includes plugins for **Claude Code** and **Cursor** that bring FollowRabbit cost optimization directly into your coding agent workflow. The plugins are thin documentation layers — skills teach the AI agent when and how to invoke the `followrabbit` CLI.
+
+## Prerequisites
+
+Install and authenticate the [followrabbit CLI](https://followrabbit.ai):
+
+```bash
+brew install followrabbit-ai/tap/followrabbit
+followrabbit auth login --key <YOUR_API_KEY>
+```
+
+Get your API key at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai). The skill will auto-install the CLI if it's missing.
+
+## Installation
+
+**Claude Code:**
+
+```bash
+claude plugin install followrabbit
+```
+
+**Cursor:**
+
+Install via Cursor Settings > Plugins > search "followrabbit", or point Cursor to this repository locally.
+
+## Skills
+
+- **cost-review** — Scans local Terraform and SQL files, runs AI-powered cost analysis via the FollowRabbit API, presents optimization instructions, and offers to apply suggestions directly to code. User-invocable via `/followrabbit:cost-review`.
+
+## Agent
+
+- **cost-optimizer** — Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`.
