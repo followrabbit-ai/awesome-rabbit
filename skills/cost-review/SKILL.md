@@ -68,6 +68,17 @@ curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh
 followrabbit version --json
 ```
 
+The `data` object contains:
+
+| Field | Example |
+|-------|---------|
+| `version` | `"1.2.0"` |
+| `commit` | `"abc1234"` |
+| `build_date` | `"2026-03-01T12:00:00Z"` |
+| `go_version` | `"go1.23.0"` |
+| `os` | `"darwin"` |
+| `arch` | `"arm64"` |
+
 Compare the `data.version` field against the latest release tag:
 
 ```bash
@@ -107,6 +118,15 @@ Tell the user:
 >    ```
 
 Wait for the user to complete authentication before continuing.
+
+### Other Auth Subcommands
+
+| Command | Purpose |
+|---------|---------|
+| `followrabbit auth status --json` | Check if CLI is authenticated |
+| `followrabbit auth login --key <KEY>` | Store an API key |
+| `followrabbit auth logout` | Remove stored credentials |
+| `followrabbit auth token` | Print the current API key to stdout (useful for scripts) |
 
 Then check quota:
 
@@ -217,6 +237,17 @@ If the API's primary engine is unavailable, the response will have `"mode": "fal
 | 5 | Processing error | "Failed to process the scan. Check that the directory contains valid .tf or .sql files" |
 | 6 | Network error | "Cannot reach the FollowRabbit API. Check your internet connection" |
 
+## Global Flags
+
+These flags work with any `followrabbit` command:
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Output as JSON (auto-enabled when stdout is piped) |
+| `--api-key <key>` | Override the stored API key for this invocation |
+| `--api-url <url>` | Override the API base URL (default: `https://api.followrabbit.ai`) |
+| `--quiet` | Suppress non-essential output |
+
 ## Additional Commands
 
 These commands are available for further investigation:
@@ -226,6 +257,21 @@ These commands are available for further investigation:
 | `followrabbit context --json` | Local-only scan — outputs structured TF/SQL context without calling the API |
 | `followrabbit recos list --json` | List cost optimization recommendations for the current repo |
 | `followrabbit status --json` | Check API key usage, quota, and recent activity |
+
+### `context` Flags
+
+The `context` command supports the same scan flags as `costreview`:
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--dir <path>` | Current working directory | Directory to scan |
+| `--types <list>` | `tf` | Comma-separated scan types: `tf`, `sql` |
+
+Example — scan a subdirectory for both Terraform and SQL files (local only, no API call):
+
+```bash
+followrabbit context --dir ./infrastructure --types tf,sql --json
+```
 
 ### `recos list` Flags
 
