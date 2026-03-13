@@ -50,8 +50,16 @@ You have the `followrabbit` CLI at your disposal. Always use the `--json` flag f
 | `followrabbit costreview --types tf,sql --json` | Scan both Terraform and SQL files |
 | `followrabbit costreview --dir <path> --json` | Scan a specific directory |
 | `followrabbit context --json` | Local-only scan — structured TF/SQL context (no API call) |
+| `followrabbit context --dir <path> --types tf,sql --json` | Local-only scan of a specific directory for both TF and SQL |
 | `followrabbit recos list --json` | List cost optimization recommendations for the repo |
 | `followrabbit status --json` | Check API key usage, quota, and recent activity |
+| `followrabbit auth status --json` | Check authentication status |
+| `followrabbit auth login --key <KEY>` | Authenticate with an API key |
+| `followrabbit auth logout` | Remove stored credentials |
+| `followrabbit auth token` | Print the current API key to stdout |
+| `followrabbit version --json` | Check CLI version and build info |
+
+**Global flags** available on any command: `--api-key <key>` (override stored key), `--api-url <url>` (override API URL), `--quiet` (suppress non-essential output).
 
 ## Workflow
 
