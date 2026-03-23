@@ -1,13 +1,14 @@
 {
   "name": "followrabbit",
   "displayName": "FollowRabbit Cost Optimization",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Cloud cost optimization for GCP infrastructure. Review changes for cost impact and auto-apply savings recommendations using the followrabbit CLI.",
   "author": {
     "name": "Rabbit",
-    "email": "support@followrabbit.ai"
+    "email": "support@followrabbit.ai",
+    "url": "https://subscriptions.agentic.followrabbit.ai"
   },
-  "homepage": "https://github.com/followrabbit-ai/awesome-rabbit",
+  "homepage": "https://subscriptions.agentic.followrabbit.ai",
   "keywords": [
     "cloud",
     "cost-optimization",
