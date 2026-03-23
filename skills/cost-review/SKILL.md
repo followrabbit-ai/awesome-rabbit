@@ -4,8 +4,8 @@ description: >
   Perform a FollowRabbit cost review on the current repository.
   Use when the user wants to understand the cost impact of Terraform or SQL
   infrastructure, asks about cloud costs, or is working with *.tf or *.sql files.
-version: 1.0.0
-tools: Bash, Read
+version: 1.1.0
+tools: Bash, Read, AskUserQuestion
 user-invocable: true
 ---
 
@@ -30,7 +30,17 @@ Check if the `followrabbit` binary is available:
 which followrabbit
 ```
 
-**If not found**, install it. Detect the best available method:
+### If not found — ask before installing
+
+Use the `AskUserQuestion` tool to ask the user:
+
+> The `followrabbit` CLI is not installed. Would you like me to install it?
+
+Options:
+- **Yes, install it** — detect the best available method and install
+- **No, I'll install it myself** — stop and let the user handle it
+
+**If the user agrees**, detect the best available method:
 
 1. **Check for Homebrew** (preferred on macOS):
 
@@ -62,7 +72,13 @@ npm install -g @followrabbit/cli
 curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh
 ```
 
-**If already installed**, check for updates:
+After install, verify:
+
+```bash
+followrabbit version --json
+```
+
+### If already installed — check for updates
 
 ```bash
 followrabbit version --json
@@ -85,13 +101,21 @@ Compare the `data.version` field against the latest release tag:
 curl -fsSL "https://api.github.com/repos/followrabbit-ai/homebrew-tap/releases?per_page=1" | grep -m1 '"tag_name"'
 ```
 
-If the installed version is behind, upgrade:
+**If the installed version is behind**, use the `AskUserQuestion` tool to ask:
+
+> A newer version of the `followrabbit` CLI is available (installed: X, latest: Y). Would you like me to upgrade it?
+
+Options:
+- **Yes, upgrade now** — run the appropriate upgrade command
+- **No, continue with current version** — proceed without upgrading
+
+If the user agrees to upgrade:
 
 - **Homebrew**: `brew upgrade followrabbit-ai/tap/followrabbit`
 - **npm**: `npm update -g @followrabbit/cli`
 - **Otherwise**: re-run `curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh`
 
-After install or update, verify:
+After update, verify:
 
 ```bash
 followrabbit version --json
@@ -105,19 +129,25 @@ Check if the CLI is authenticated:
 followrabbit auth status --json
 ```
 
-If the output shows `"authenticated": false` or the command fails with exit code 2, the user needs an API key.
+If the output shows `"authenticated": false` or the command fails with exit code 2, use the `AskUserQuestion` tool to ask:
 
-Tell the user:
+> The CLI is not authenticated. You need a FollowRabbit API key — get one at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai). How would you like to authenticate?
 
-> You need a FollowRabbit API key to run cost reviews.
->
-> 1. Sign up at [followrabbit.ai](https://followrabbit.ai) to get your API key
-> 2. Then authenticate:
->    ```
->    followrabbit auth login --key <YOUR_API_KEY>
->    ```
+Options:
+- **I'll paste the key — run the login for me** — wait for the user to provide the key, then run `followrabbit auth login --key <KEY>`
+- **I'll handle it myself** — stop and wait for the user to authenticate on their own
 
-Wait for the user to complete authentication before continuing.
+If the user chooses to paste the key, run:
+
+```bash
+followrabbit auth login --key <KEY_PROVIDED_BY_USER>
+```
+
+Verify authentication succeeded:
+
+```bash
+followrabbit auth status --json
+```
 
 ### Other Auth Subcommands
 
@@ -150,6 +180,8 @@ followrabbit costreview --json
 |------|---------|-------------|
 | `--dir <path>` | Current working directory | Directory to scan |
 | `--types <list>` | `tf` | Comma-separated scan types: `tf`, `sql` |
+| `--skills <list>` | `cost-impact,partition-check,best-practices` | Comma-separated skill IDs to request |
+| `--model <name>` | API default | LLM model override (e.g., `gemini-2.5-pro`) |
 | `--json` | Auto-enabled when piped | Output as JSON |
 
 ### Examples
@@ -231,7 +263,7 @@ If the API's primary engine is unavailable, the response will have `"mode": "fal
 | Exit Code | Meaning | What to Tell the User |
 |-----------|---------|----------------------|
 | 0 | Success | Show the instructions |
-| 2 | Auth error | "Run `followrabbit auth login --key <KEY>` to authenticate. Get your key at followrabbit.ai" |
+| 2 | Auth error | "Run `followrabbit auth login --key <KEY>` to authenticate. Get your key at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai)" |
 | 3 | Rate limit / quota exceeded | "API quota exhausted. Check `followrabbit status` for reset date" |
 | 4 | Input error | "Invalid flags or arguments. Check the command syntax" |
 | 5 | Processing error | "Failed to process the scan. Check that the directory contains valid .tf or .sql files" |
@@ -245,8 +277,15 @@ These flags work with any `followrabbit` command:
 |------|-------------|
 | `--json` | Output as JSON (auto-enabled when stdout is piped) |
 | `--api-key <key>` | Override the stored API key for this invocation |
-| `--api-url <url>` | Override the API base URL (default: `https://api.followrabbit.ai`) |
+| `--api-url <url>` | Override the API base URL (default: `https://api.agentic.followrabbit.ai`) |
 | `--quiet` | Suppress non-essential output |
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `FOLLOWRABBIT_API_KEY` | API key override (used instead of stored credentials) |
+| `RABBIT_CONFIG_DIR` | Override the default config directory (`~/.config/followrabbit/`) |
 
 ## Additional Commands
 
@@ -257,6 +296,7 @@ These commands are available for further investigation:
 | `followrabbit context --json` | Local-only scan — outputs structured TF/SQL context without calling the API |
 | `followrabbit recos list --json` | List cost optimization recommendations for the current repo |
 | `followrabbit status --json` | Check API key usage, quota, and recent activity |
+| `followrabbit completion <shell>` | Generate shell completions (bash, zsh, fish, powershell) |
 
 ### `context` Flags
 
@@ -286,12 +326,18 @@ followrabbit context --dir ./infrastructure --types tf,sql --json
 **User**: "Can you check if there are any cost optimization opportunities in this Terraform code?"
 
 **Agent**:
-1. Checks `followrabbit` is installed — finds it at `/usr/local/bin/followrabbit`
-2. Checks auth status — authenticated
-3. Runs `followrabbit costreview --json`
-4. Parses the response and presents:
+1. Runs `which followrabbit` — not found
+2. Uses `AskUserQuestion`: "The `followrabbit` CLI is not installed. Would you like me to install it?"
+3. User selects "Yes, install it"
+4. Detects Homebrew, runs `brew install followrabbit-ai/tap/followrabbit`
+5. Runs `followrabbit auth status --json` — not authenticated
+6. Uses `AskUserQuestion`: "The CLI is not authenticated. You need a FollowRabbit API key — get one at subscriptions.agentic.followrabbit.ai. How would you like to authenticate?"
+7. User selects "I'll paste the key — run the login for me" and provides the key
+8. Runs `followrabbit auth login --key <KEY>` — success
+9. Runs `followrabbit costreview --json`
+10. Parses the response and presents:
 
-> I ran a FollowRabbit cost review on your infrastructure. Here are the findings:
+> Here are the findings from the FollowRabbit cost review:
 >
 > **Cost Impact:**
 > - Your `google_compute_instance.web_server` uses `n2-standard-8` — consider right-sizing to `n2-standard-4` if CPU utilization is low
@@ -309,6 +355,6 @@ followrabbit context --dir ./infrastructure --types tf,sql --json
 **User**: "Yes, add the missing labels and the lifecycle rule"
 
 **Agent**:
-5. Reads the relevant `.tf` files
-6. Adds labels and lifecycle rules
-7. Shows the diff to the user
+11. Reads the relevant `.tf` files
+12. Adds labels and lifecycle rules
+13. Shows the diff to the user
