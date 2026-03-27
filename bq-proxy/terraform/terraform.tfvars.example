@@ -1,0 +1,29 @@
+# Required
+project_id = "my-gcp-project"
+region     = "us-central1"
+
+# Rabbit API key (provided by your Rabbit contact)
+rabbit_api_key = "your-rabbit-api-key"
+
+# Choose the image closest to your BigQuery datasets:
+#   US:     us-docker.pkg.dev/rbt-prod-app-eu/rbt-bq-proxy/bq-proxy:latest
+#   Europe: europe-docker.pkg.dev/rbt-prod-app-eu/rbt-bq-proxy/bq-proxy:latest
+#   Asia:   asia-docker.pkg.dev/rbt-prod-app-eu/rbt-bq-proxy/bq-proxy:latest
+image = "us-docker.pkg.dev/rbt-prod-app-eu/rbt-bq-proxy/bq-proxy:latest"
+
+# Pricing mode: "on_demand" or "slot_based"
+default_pricing_mode = "on_demand"
+
+# Reservation IDs for optimization (leave empty if not applicable)
+# reservation_ids = ["projects/my-project/locations/US/reservations/my-reservation"]
+
+# Scaling
+min_instances = 1
+max_instances = 20
+
+# Resources per instance
+cpu    = "2"
+memory = "512Mi"
+
+# Log level: debug, info, warn, error
+log_level = "info"
