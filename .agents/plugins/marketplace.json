@@ -1,0 +1,20 @@
+{
+  "name": "followrabbit",
+  "interface": {
+    "displayName": "FollowRabbit Plugins"
+  },
+  "plugins": [
+    {
+      "name": "followrabbit",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Development & Workflow"
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+interface:
+  display_name: "FollowRabbit Cost Review"
+  short_description: "Scan local Terraform and SQL files for GCP cost optimization opportunities and apply the suggestions."
+  brand_color: "#F97316"
+  default_prompt:
+    - "Run a FollowRabbit cost review on this repository and summarize the findings."
+    - "Is this Terraform change going to be expensive?"
+    - "Check these SQL queries for BigQuery partitioning and cost issues."
+policy:
+  allow_implicit_invocation: true

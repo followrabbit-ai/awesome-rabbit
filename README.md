@@ -21,7 +21,7 @@ This repository aims to provide tools, scripts, and code snippets for current an
 
 # Coding Agent Plugins
 
-This repository includes plugins for **Claude Code** and **Cursor** that bring FollowRabbit cost optimization directly into your coding agent workflow. The plugins are thin documentation layers — skills teach the AI agent when and how to invoke the `followrabbit` CLI.
+This repository includes plugins for **Claude Code**, **Cursor**, and **OpenAI Codex** that bring FollowRabbit cost optimization directly into your coding agent workflow. The plugins are thin documentation layers — skills teach the AI agent when and how to invoke the `followrabbit` CLI.
 
 ## Prerequisites
 
@@ -46,10 +46,21 @@ claude plugin install followrabbit
 
 Install via Cursor Settings > Plugins > search "followrabbit", or point Cursor to this repository locally.
 
+**OpenAI Codex:**
+
+Add this repository as a Codex plugin marketplace, then install the plugin:
+
+```bash
+codex plugin marketplace add https://github.com/followrabbit-ai/awesome-rabbit
+codex plugin install followrabbit
+```
+
+Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at this repository, and install `followrabbit` from the directory.
+
 ## Skills
 
 - **cost-review** — Scans local Terraform and SQL files, runs AI-powered cost analysis via the FollowRabbit API, presents optimization instructions, and offers to apply suggestions directly to code. User-invocable via `/followrabbit:cost-review`.
 
 ## Agent
 
-- **cost-optimizer** — Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`.
+- **cost-optimizer** — (Claude Code only) Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`. In Codex, the same proactive behavior is provided by the `cost-review` skill with implicit invocation enabled.
