@@ -1,0 +1,47 @@
+{
+  "name": "followrabbit",
+  "version": "1.1.0",
+  "description": "Cloud cost optimization for GCP infrastructure. Review changes for cost impact and auto-apply savings recommendations using the followrabbit CLI.",
+  "author": {
+    "name": "Rabbit",
+    "email": "support@followrabbit.ai",
+    "url": "https://subscriptions.agentic.followrabbit.ai"
+  },
+  "homepage": "https://subscriptions.agentic.followrabbit.ai",
+  "repository": "https://github.com/followrabbit-ai/awesome-rabbit",
+  "license": "MIT",
+  "keywords": [
+    "cloud",
+    "cost-optimization",
+    "terraform",
+    "gcp",
+    "google-cloud",
+    "finops",
+    "infrastructure",
+    "bigquery",
+    "gke",
+    "codex-plugin"
+  ],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "FollowRabbit Cost Optimization",
+    "shortDescription": "AI-powered GCP cost review for Terraform and SQL",
+    "longDescription": "FollowRabbit scans your local Terraform and SQL files, runs AI-powered cost analysis against the FollowRabbit API, and returns actionable optimization instructions. Codex can then apply the suggested changes directly to your code. Covers compute sizing, storage classes, BigQuery partitioning/clustering, labels, lifecycle rules, autoscaling, HA over-provisioning, network tier, and committed use discounts.",
+    "developerName": "Rabbit",
+    "category": "Development & Workflow",
+    "capabilities": [
+      "Interactive",
+      "Write"
+    ],
+    "websiteURL": "https://followrabbit.ai",
+    "privacyPolicyURL": "https://followrabbit.ai/privacy",
+    "termsOfServiceURL": "https://followrabbit.ai/terms",
+    "defaultPrompt": [
+      "Run a FollowRabbit cost review on this repository and summarize the optimization opportunities.",
+      "Check these Terraform changes for cost impact before I commit.",
+      "List the open FollowRabbit recommendations for this repo and help me apply the top ones."
+    ],
+    "brandColor": "#F97316",
+    "logo": "./.codex-plugin/assets/logo.png"
+  }
+}
