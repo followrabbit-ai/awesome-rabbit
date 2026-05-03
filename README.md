@@ -19,8 +19,8 @@ This repository aims to provide tools, scripts, and code snippets for current an
 - [bq-proxy](bq-proxy/):
   - A BigQuery dynamic pricing proxy that sits between your clients (Looker, dbt Cloud, Airflow, etc.) and the BigQuery REST API. It intercepts query and job requests, calls the Rabbit BQ Job Optimizer to automatically optimize job configuration (e.g. reservation routing), and streams responses transparently. Includes Terraform for Cloud Run deployment and a standalone performance test tool.
 
-- [bq-scheduled-query-pricing-optimizer](bq-scheduled-query-pricing-optimizer/):
-  - Set the optimal pricing model — slot-reservation or on-demand — on every BigQuery scheduled query in a project or GCP folder, in one command. Driven by the `followrabbit` CLI; rewrites each managed scheduled query with a fenced `SET @@reservation` statement and a tracking label. Idempotent re-runs, dry-run by default, full revert support.
+- [followrabbit-cli](followrabbit-cli/):
+  - Comprehensive reference for the `followrabbit` CLI — install, auth, every command group (auth · status · costreview · context · recos · optimize · completion · version) plus a deep-dive on `optimize bq-compute-pricing-model scheduled-queries`, which sets the optimal pricing model on every BigQuery scheduled query in a project. Idempotent re-runs, dry-run by default, full revert support.
 
 # Coding Agent Plugins
 
