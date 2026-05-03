@@ -15,8 +15,8 @@ For every scheduled query in scope:
 1. **List** scheduled queries via the BigQuery Data Transfer Service API.
 2. **Send** the full `TransferConfig` to the optimizer's `POST /v1/scheduled-query.optimize` endpoint.
 3. **Receive** one of:
-   - `decision: "apply"` — a fully-rewritten `optimizedConfig`. The CLI patches it back via `transferConfigs.patch update_mask=params,labels`.
-   - `decision: "skip"` — with a reason (`tf_managed`, `customer_set_reservation`, `no_recommendation_yet`, `wrong_data_source`, `size_cap_exceeded`, `missing_query`).
+   - `decision: "apply"` — a fully-rewritten `optimizedConfig`. The CLI patches it back via `transferConfigs.patch update_mask=params`.
+   - `decision: "skip"` — with a reason (`customer_set_reservation`, `no_recommendation_yet`, `wrong_data_source`, `size_cap_exceeded`, `missing_query`).
 4. **Verify** the executing service account has `bigquery.reservationAssignments.use` on the recommended reservation. Block writes that would break the next execution unless `--ignore-iam-warnings` is passed.
 
 What gets written into a managed scheduled query:
@@ -30,9 +30,7 @@ SET @@reservation = 'projects/<admin>/locations/<region>/reservations/<name>';
 
 For "on-demand wins": `SET @@reservation = 'none';` instead.
 
-Two labels are added to the transfer config for tracking and idempotent re-runs:
-- `rabbit-job-optimization-id=<UUID>` — stable across runs, primary correlation key.
-- `rabbit-managed-by=optimize-bq-compute-pricing-model-scheduled-queries`
+The fence comment carries everything Rabbit needs to track the config across runs — a stable UUID (`id: …`), the timestamp of the last decision (`ts: …`), and the optimizer's reason string (`reason: …`). BQ Data Transfer Service `TransferConfig` resources don't have a `labels` field, so the fence is the single source of truth; there are no separate labels to clean up. The CLI re-runs detect "already managed" by parsing the existing fence's UUID out of the SQL.
 
 ---
 
@@ -114,8 +112,8 @@ Use the alias day-to-day; use the long form in scripts for unambiguous transcrip
 |---|---|---|
 | `recommend` | Lists configs in scope, asks the optimizer for each, prints the plan. Read-only. | No |
 | `apply` | Same as `recommend` but also patches the recommended changes. **Defaults to dry-run** — pass `--confirm` to actually write. | Yes (with `--confirm`) |
-| `revert` | Strips the Rabbit fence and removes the tracking labels from configs we manage. | Yes (with `--confirm`) |
-| `status` | Lists scheduled queries that are currently Rabbit-managed (have the tracking label). | No |
+| `revert` | Strips the Rabbit fence from configs we manage. The original SQL beneath the fence is preserved byte-for-byte. | Yes (with `--confirm`) |
+| `status` | Lists scheduled queries that are currently Rabbit-managed (detected by scanning for the fence header in the SQL). | No |
 
 ### Common flags
 
@@ -127,7 +125,7 @@ Use the alias day-to-day; use the long form in scripts for unambiguous transcrip
 
   --dry-run / --confirm                                    apply: dry-run by default; --confirm to write
   --max-changes <n>                                        Safety cap; default 50
-  --skip-tf-managed / --no-respect-tf-managed              Skip Terraform-managed configs (default: skip)
+  (TF-managed detection reserved for v1.x — DTS has no Terraform label signal)
   --ignore-customer-reservation                            Override customer-set @@reservation skip (off by default)
   --ignore-iam-warnings                                    Apply even when the scheduled query SA lacks reservation `use` (off by default)
 
@@ -174,9 +172,8 @@ Sample output (truncated):
     "summary": {
       "total": 47,
       "apply": 32,
-      "skip_tf_managed": 8,
       "skip_customer_set_reservation": 1,
-      "skip_no_recommendation_yet": 5,
+      "skip_no_recommendation_yet": 13,
       "skip_size_cap_exceeded": 0,
       "skip_wrong_data_source": 1,
       "estimated_savings_per_run_usd": 18.42
@@ -232,7 +229,7 @@ followrabbit optimize sq-pricing status --project my-prod-project --json
 followrabbit optimize sq-pricing revert --project my-prod-project --confirm
 ```
 
-This strips every Rabbit fence (and removes the `rabbit-job-optimization-id` and `rabbit-managed-by` labels) from configs that carry our tracking label. The original SQL — everything below the fence — is left byte-for-byte unchanged.
+This strips every Rabbit fence from configs that carry our fence header in the SQL. The original SQL — everything below the fence — is left byte-for-byte unchanged.
 
 ### Run on a schedule
 
@@ -265,7 +262,6 @@ When the recommendation is `decision: "skip"`, the `reason` field tells you why:
 |---|---|---|
 | `wrong_data_source` | Not a `scheduled_query` DTS config (e.g. cross-region copy). | Nothing — the CLI filters these during list, but the API guards defensively. |
 | `missing_query` | `params.query` absent or not a string. Malformed config. | Inspect the config; this should never happen for scheduled queries created via the BQ console. |
-| `tf_managed` | Has the `goog-terraform-provisioned: true` label set by the Google Terraform provider. | Either accept the skip (the CLI's plan won't fight your IaC), or pass `--no-respect-tf-managed` to force-rewrite **and** review the resulting Terraform drift in your PR before applying it upstream. |
 | `customer_set_reservation` | The SQL already contains a `SET @@reservation` statement outside our fence. | The CLI assumes this is intentional. If you want the optimizer to manage it instead, remove the existing `SET @@reservation` and re-run, or pass `--ignore-customer-reservation`. |
 | `no_recommendation_yet` | The optimizer has no actionable recommendation for this query yet — no historical data, query is too small to matter, or the project's current default already wins. | Re-run after a few days/weeks; the optimizer needs run history to make a confident recommendation. |
 | `size_cap_exceeded` | The rewritten SQL would exceed the BQ DTS 1MB cap. | Slim down the query body, or accept that this scheduled query stays unmanaged. |
@@ -276,8 +272,8 @@ When the recommendation is `decision: "skip"`, the `reason` field tells you why:
 
 `apply --confirm` is fully idempotent. On re-run:
 
-1. The CLI sends each `TransferConfig` (which already carries our fence and label).
-2. The optimizer detects its own fence via the stable `rabbit-job-optimization-id` label.
+1. The CLI sends each `TransferConfig` (which already carries our fence in the SQL).
+2. The optimizer detects its own fence by parsing the fence header out of the SQL — the stable UUID is encoded in the `id: <UUID>` portion of the BEGIN marker.
 3. It strips the existing fence, re-runs the decision, and re-emits the fence with the **same UUID** but possibly an updated reservation path.
 4. If nothing changed, the patch is a no-op.
 
@@ -288,12 +284,12 @@ The UUID on a config never changes for the lifetime of that scheduled query. Tha
 ## Safety
 
 - **Default to dry-run.** `apply` without `--confirm` shows the full plan and writes nothing.
-- **Per-config diff.** Dry-run output includes the SQL diff and label diff for every config we'd modify.
+- **Per-config diff.** Dry-run output includes the SQL diff for every config we'd modify.
 - **`--max-changes <n>` cap** (default 50). Refuses to apply a plan with more changes than the cap unless the cap is raised explicitly. Lets you canary a small batch before unleashing the tool on a 5,000-config folder.
 - **Customer-set `@@reservation` is sacred** by default. The optimizer refuses to overwrite a `SET @@reservation` outside our fence, even if it would be a better recommendation. Override only when you mean it.
 - **Terraform-managed configs are skipped** by default. Letting the CLI rewrite a Terraform-provisioned config silently breaks the next `terraform apply` cycle.
 - **IAM preflight on the recommended reservation.** If the scheduled query's SA can't `use` the reservation the optimizer chose, the next execution fails at runtime — the CLI catches this in advance and refuses to write the config (override with `--ignore-iam-warnings`).
-- **`revert` is a real undo.** Strips Rabbit fences and labels; leaves the original user SQL byte-for-byte unchanged.
+- **`revert` is a real undo.** Strips Rabbit fences; leaves the original user SQL byte-for-byte unchanged.
 
 ---
 
