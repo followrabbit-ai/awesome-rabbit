@@ -16,9 +16,9 @@ user-invocable: true
 
 ## Overview
 
-This skill drives the `followrabbit` CLI to set the optimal pricing model on every BigQuery scheduled query in scope. The transformation lives server-side: the CLI sends each `TransferConfig` to the optimizer service, receives back either a fully-rewritten config or a structured skip reason, then patches the optimized config back via the BQ Data Transfer Service API. You orchestrate; never interpret SQL or labels yourself.
+This skill drives the `followrabbit` CLI to set the optimal pricing model on every BigQuery scheduled query in scope. The transformation lives server-side: the CLI sends each `TransferConfig` to the optimizer service, receives back either a fully-rewritten config or a structured skip reason, then patches the optimized config back via the BQ Data Transfer Service API. You orchestrate; never interpret SQL yourself.
 
-The CLI rewrites each managed scheduled query's SQL with a fenced `SET @@reservation` statement, and tags the transfer config with `rabbit-job-optimization-id` and `rabbit-managed-by` labels. Re-runs are idempotent.
+The CLI rewrites each managed scheduled query's SQL with a fenced `SET @@reservation` statement, and encodes the tracking UUID, timestamp, and decision reason in the fence comment (BQ DTS TransferConfigs have no labels field). Re-runs are idempotent.
 
 ## When to Use
 
@@ -122,7 +122,7 @@ The JSON envelope follows the standard `{version, command, status, data}` shape.
 | `data.summary.skip_*` | Counts per skip reason. |
 | `data.summary.estimated_savings_per_run_usd` | Predicted total savings per scheduled run. |
 | `data.configs[].decision` | `"apply"` or `"skip"`. |
-| `data.configs[].reason` | `applied`, `tf_managed`, `customer_set_reservation`, `no_recommendation_yet`, `wrong_data_source`, `size_cap_exceeded`, or `missing_query`. |
+| `data.configs[].reason` | `applied`, `customer_set_reservation`, `no_recommendation_yet`, `wrong_data_source`, `size_cap_exceeded`, or `missing_query`. |
 | `data.configs[].context.reservationAssigned` | Reservation path (or empty/`'none'` for on-demand). |
 | `data.configs[].context.estimatedSavings` | USD per run. |
 
@@ -148,7 +148,6 @@ Build a concise markdown summary for the user:
 | Status | Count | What it means |
 |---|---|---|
 | ✅ Apply | A | Will be rewritten if you confirm. |
-| ⏭ Skipped: TF-managed | T | Created via Terraform — left alone by default. |
 | ⏭ Skipped: customer-set `@@reservation` | C | The SQL already pins a reservation; not overriding without explicit flag. |
 | ⏭ Skipped: no recommendation yet | N | Optimizer needs more run history. |
 | ⏭ Skipped: size cap | S | Rewritten SQL would exceed 1MB. |
@@ -208,7 +207,7 @@ followrabbit optimize bq-compute-pricing-model scheduled-queries revert \
   --confirm
 ```
 
-This strips every Rabbit fence and removes the tracking labels from configs we manage. The original user SQL — everything below the fence — is left byte-for-byte unchanged.
+This strips every Rabbit fence from configs we manage. The original user SQL — everything below the fence — is left byte-for-byte unchanged.
 
 ## Recurring-run suggestion
 
@@ -238,7 +237,7 @@ followrabbit optimize sq-pricing                         <verb> [flags]   # shor
 Verbs:
   recommend     Read-only. Lists configs + per-config decisions. Never writes.
   apply         Same plan, then patches with --confirm. Default is dry-run.
-  revert        Strips Rabbit fences and tracking labels.
+  revert        Strips Rabbit fences.
   status        Lists currently-managed scheduled queries.
 
 Common flags:
@@ -248,9 +247,9 @@ Common flags:
   --concurrency <n>                                       Default 8
   --dry-run / --confirm                                   apply default: dry-run
   --max-changes <n>                                       Default 50
-  --skip-tf-managed / --no-respect-tf-managed
   --ignore-customer-reservation
   --ignore-iam-warnings
+  (TF-managed detection reserved for v1.x — DTS has no Terraform label signal)
   --json / --explain / --quiet
   --api-key <key>  /  --api-url <url>
 ```

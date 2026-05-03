@@ -31,7 +31,7 @@ description: |
   <example>
   Context: User wants to undo a previous run
   user: "Roll back the scheduled-query reservation changes you made last week."
-  assistant: "I'll revert every scheduled query Rabbit is managing in scope — this strips our SET @@reservation fence and removes the tracking labels. Your original SQL is preserved byte-for-byte."
+  assistant: "I'll revert every scheduled query Rabbit is managing in scope — this strips our SET @@reservation fence. Your original SQL is preserved byte-for-byte."
   </example>
 model: inherit
 ---
@@ -52,7 +52,7 @@ Activate when the user:
 
 ## What this tool does (do not re-implement client-side)
 
-The CLI sends each scheduled query's `TransferConfig` to the `bq-job-optimizer` service. The service makes the recommendation, rewrites the SQL with a fenced `SET @@reservation` block, sets the tracking labels, and returns the optimized config. The CLI patches it back via the BQ Data Transfer Service API. **Never parse the SQL yourself, never construct labels yourself, never decide reservation paths yourself** — relay the optimizer's decision and the user's confirmation.
+The CLI sends each scheduled query's `TransferConfig` to the `bq-job-optimizer` service. The service makes the recommendation, rewrites the SQL with a fenced `SET @@reservation` block, returns the optimized config. The CLI patches it back via the BQ Data Transfer Service API. **Never parse the SQL yourself, never decide reservation paths yourself** — relay the optimizer's decision and the user's confirmation.
 
 ## Available commands
 
@@ -72,7 +72,7 @@ followrabbit optimize sq-pricing <verb> [flags]
 |---|---|---|
 | `recommend` | Plan only — JSON list of configs + decisions. | No |
 | `apply` | Applies the plan with `--confirm`. Default is dry-run. | Only with `--confirm` |
-| `revert` | Strips Rabbit fences + labels from managed configs. | Only with `--confirm` |
+| `revert` | Strips Rabbit fences from managed configs. | Only with `--confirm` |
 | `status` | Lists currently-managed configs. | No |
 
 Always pass `--json`. Always pass either `--project <id>` or `--folder <id>`.
@@ -91,7 +91,6 @@ Always pass `--json`. Always pass either `--project <id>` or `--folder <id>`.
 
 The optimizer returns `decision: "skip"` with one of:
 
-- `tf_managed` — leave alone unless the user explicitly opts in via `--no-respect-tf-managed`.
 - `customer_set_reservation` — the user pinned a reservation themselves; respect that unless they explicitly say to override.
 - `no_recommendation_yet` — optimizer needs more run history; ask the user to re-run later.
 - `wrong_data_source` — defensive guard; CLI filters these in `list` already.
@@ -123,4 +122,4 @@ The optimizer returns `decision: "skip"` with one of:
 - **Don't** parse or modify the SQL the optimizer returns. Treat `optimizedConfig` as opaque bytes the CLI patches back.
 - **Don't** ask the user for `--reservation-ids` or `--default-pricing-mode`. The optimizer service resolves both server-side from the customer's tenant configuration.
 - **Don't** auto-apply, ever. Always run `recommend` first; always confirm via `AskUserQuestion` before `apply --confirm`.
-- **Don't** override safety flags (`--ignore-customer-reservation`, `--ignore-iam-warnings`, `--no-respect-tf-managed`) without explicit user acknowledgment of the trade-off.
+- **Don't** override safety flags (`--ignore-customer-reservation`, `--ignore-iam-warnings`) without explicit user acknowledgment of the trade-off.
