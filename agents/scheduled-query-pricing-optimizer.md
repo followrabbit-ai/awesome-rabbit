@@ -12,7 +12,7 @@ description: |
   <commentary>
   User wants per-query pricing-model optimization across their scheduled
   queries. The scheduled-query-pricing-optimizer agent should run
-  `optimize bq-pricing-model scheduled-queries recommend`, present the
+  `optimize bq-compute-pricing-model scheduled-queries recommend`, present the
   plan, and ask before applying.
   </commentary>
   </example>
@@ -59,7 +59,7 @@ The CLI sends each scheduled query's `TransferConfig` to the `bq-job-optimizer` 
 The canonical long form (use this in scripts and transcripts):
 
 ```
-followrabbit optimize bq-pricing-model scheduled-queries <verb> [flags]
+followrabbit optimize bq-compute-pricing-model scheduled-queries <verb> [flags]
 ```
 
 Short alias (use in conversation):

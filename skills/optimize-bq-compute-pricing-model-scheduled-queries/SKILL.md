@@ -1,5 +1,5 @@
 ---
-name: optimize-bq-pricing-model-scheduled-queries
+name: optimize-bq-compute-pricing-model-scheduled-queries
 description: >
   Set the optimal pricing model — slot-reservation or on-demand — on
   every BigQuery scheduled query in a project (or GCP folder). Runs the
@@ -106,7 +106,7 @@ Use `AskUserQuestion` to confirm:
 Always run `recommend` before any write. The agent always uses the canonical long form so transcripts are unambiguous and grep-able across support tickets:
 
 ```bash
-followrabbit optimize bq-pricing-model scheduled-queries recommend \
+followrabbit optimize bq-compute-pricing-model scheduled-queries recommend \
   --project <id-or-folder-flag> \
   --json
 ```
@@ -168,7 +168,7 @@ Highlight any IAM warnings prominently — those are the silent failure mode. Ne
 
 Use `AskUserQuestion`:
 
-> Apply these changes to N scheduled queries? Saved SQL will be rewritten with a fenced `SET @@reservation` statement; you can revert with `followrabbit optimize bq-pricing-model scheduled-queries revert`.
+> Apply these changes to N scheduled queries? Saved SQL will be rewritten with a fenced `SET @@reservation` statement; you can revert with `followrabbit optimize bq-compute-pricing-model scheduled-queries revert`.
 
 Options:
 - **Yes, apply** — proceed to step 6.
@@ -180,7 +180,7 @@ If there were IAM warnings in step 4, ask separately whether to fix them first o
 ## Step 6 — Apply
 
 ```bash
-followrabbit optimize bq-pricing-model scheduled-queries apply \
+followrabbit optimize bq-compute-pricing-model scheduled-queries apply \
   --project <id-or-folder-flag> \
   --confirm \
   --json
@@ -191,7 +191,7 @@ Parse the result, surface any per-config failures, and report the actual count w
 ## Step 7 — Verify post-state
 
 ```bash
-followrabbit optimize bq-pricing-model scheduled-queries status \
+followrabbit optimize bq-compute-pricing-model scheduled-queries status \
   --project <id-or-folder-flag> \
   --json
 ```
@@ -203,7 +203,7 @@ Show the user the count of currently-managed configs. If a customer asks "what d
 If `apply` returns exit 7 (partial) or the user reports unexpected behavior in their scheduled queries the next morning, suggest:
 
 ```bash
-followrabbit optimize bq-pricing-model scheduled-queries revert \
+followrabbit optimize bq-compute-pricing-model scheduled-queries revert \
   --project <id-or-folder-flag> \
   --confirm
 ```
@@ -216,7 +216,7 @@ After a successful apply, mention to the user that recommendations drift over ti
 
 ```bash
 # Weekly cron-friendly form:
-followrabbit optimize bq-pricing-model scheduled-queries apply \
+followrabbit optimize bq-compute-pricing-model scheduled-queries apply \
   --folder <folder-id> --confirm --quiet --json
 ```
 
@@ -232,7 +232,7 @@ These prompts come up; handle them deliberately:
 ## Reference: full command surface
 
 ```
-followrabbit optimize bq-pricing-model scheduled-queries <verb> [flags]
+followrabbit optimize bq-compute-pricing-model scheduled-queries <verb> [flags]
 followrabbit optimize sq-pricing                         <verb> [flags]   # short alias
 
 Verbs:
