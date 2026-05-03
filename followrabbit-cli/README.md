@@ -341,6 +341,36 @@ resource "google_cloud_scheduler_job" "rabbit_sq_pricing" {
 
 The UUID on a config never changes for the lifetime of that scheduled query. That stability is what lets Rabbit's analytics correlate "we recommended X, the actual job ran on Y, savings realized was $Z" across runs.
 
+### Limitations
+
+#### User-OAuth scheduled queries (the BigQuery console default)
+
+Scheduled queries created through the BigQuery console — i.e. clicking **Schedule** in the query editor without explicitly setting a service account — are stored with the **creator's user-OAuth credentials**. DTS treats them with a per-resource ownership rule: `params.query` is a "restricted parameter" that **only the creating user can modify**, even when other principals hold `roles/bigquery.admin` on the project.
+
+Symptom when the running identity isn't the creator:
+
+```
+exit 6 — PATCH_FAILED: googleapi: Error 403: Cannot modify restricted parameters
+without taking ownership of the transfer configuration.
+```
+
+The CLI uses Application Default Credentials (`gcloud auth application-default login`) for all GCP calls, so the practical question is **does ADC resolve to the same account that originally created the SQ?**
+
+Three workarounds, in order of preference:
+
+1. **Match ADC to the SQ's owner.** Run `gcloud auth application-default login` as the user whose name appears in `ownerInfo.email` (visible via `bq show --transfer_config <id>`), then retry. Suitable when one engineer owns the SQs they want to optimize.
+
+2. **Standardise on a "rabbit-sq-optimizer" service account.** Recommended for organisations that want one-click optimisation across an entire project regardless of who originally created each SQ:
+   - Create a SA in the project (`rabbit-sq-optimizer@<project>.iam.gserviceaccount.com`).
+   - Grant it the BigQuery permissions the SQs need to run (`roles/bigquery.admin` on the project, plus any cross-project reservation/data perms).
+   - Grant `roles/iam.serviceAccountUser` on the SA to whoever runs the CLI (a single ops account, the dev group, etc.).
+   - First run with `--take-ownership-with-sa rabbit-sq-optimizer@<project>.iam.gserviceaccount.com` (planned for v1.x — see issue tracker). DTS converts each user-OAuth SQ to **run as that SA going forward**; from then on the SA is the owner and any caller with `actAs` can patch them without the flag.
+   - **Tradeoff**: this permanently changes the SQ's run-as identity. The SA must hold every BQ data permission the original user had. Communicate the change to SQ owners before doing it.
+
+3. **New SQs only.** Encourage future scheduled queries to be created with `bq mk --transfer_config --service_account_name=…` (or the equivalent Terraform/API parameter). SA-owned SQs have no per-resource ownership rule — anyone with `bigquery.transfers.update` can optimize them.
+
+The CLI annotates the failure message with this hint when it sees the 403, so users discover the workaround at the point of pain rather than from the docs.
+
 ### Troubleshooting
 
 **`exit 2 — your Rabbit account has no reservations configured`**
@@ -351,6 +381,12 @@ The credentials the CLI is running under don't have permission to patch transfer
 
 **`exit 5 — scheduled query SA missing bigquery.reservationAssignments.use on <reservation>`**
 The DTS service account that owns the scheduled query (visible in `bq show --transfer_config <id>`) needs `bigquery.reservationAssignments.use` on the target reservation. Grant it on the reservation's admin project, then re-run `apply --confirm`.
+
+**`exit 6 — PATCH_FAILED ... Cannot modify restricted parameters without taking ownership`**
+The SQ is user-OAuth-owned and ADC resolves to a different account — see [Limitations → User-OAuth scheduled queries](#user-oauth-scheduled-queries-the-bigquery-console-default) above. Quick fix: `gcloud auth application-default login` as the SQ's owner (check `ownerInfo.email`), then retry. Project-wide fix: standardise on a per-project service account (option 2 in the same section).
+
+**`exit 6 — recommend says decision=apply with reservation X but the wrong reservation appears in the patched SQL`**
+The reservation the optimizer chose was driven by your tenant's `featureConfig` (or by `--enabled-optimizations-json` if you used the test flag). Edit the tenant's reservation list at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai), or update your inline JSON, then re-run.
 
 **Scheduled query started failing the morning after `apply`**
 Almost certainly an IAM gap on the executing SA — check that `bigquery.reservationAssignments.use` is granted on the reservation now in the `SET @@reservation` line. If unsure, run `revert --confirm` to roll back, fix the IAM, and re-`apply`.
