@@ -32,7 +32,7 @@ For "on-demand wins": `SET @@reservation = 'none';` instead.
 
 Two labels are added to the transfer config for tracking and idempotent re-runs:
 - `rabbit-job-optimization-id=<UUID>` — stable across runs, primary correlation key.
-- `rabbit-managed-by=optimize-bq-pricing-model-scheduled-queries`
+- `rabbit-managed-by=optimize-bq-compute-pricing-model-scheduled-queries`
 
 ---
 
@@ -97,7 +97,7 @@ followrabbit <action> <optimization-domain> <target-resource> <verb> [flags]
 For BigQuery scheduled query pricing-model optimization in v1:
 
 ```
-followrabbit optimize bq-pricing-model scheduled-queries <verb> [flags]
+followrabbit optimize bq-compute-pricing-model scheduled-queries <verb> [flags]
 ```
 
 A short alias resolves to the same command:
@@ -167,7 +167,7 @@ Sample output (truncated):
 ```json
 {
   "version": "1",
-  "command": "optimize.bq-pricing-model.scheduled-queries.recommend",
+  "command": "optimize.bq-compute-pricing-model.scheduled-queries.recommend",
   "status": "success",
   "data": {
     "scope": { "project": "my-prod-project", "location": "all" },
@@ -247,7 +247,7 @@ resource "google_cloud_scheduler_job" "rabbit_sq_pricing" {
     uri         = "https://my-runner.example.com/run"
     http_method = "POST"
     body        = base64encode(jsonencode({
-      command = "followrabbit optimize bq-pricing-model scheduled-queries apply --folder ${var.folder_id} --confirm --json"
+      command = "followrabbit optimize bq-compute-pricing-model scheduled-queries apply --folder ${var.folder_id} --confirm --json"
     }))
   }
 }
@@ -309,7 +309,7 @@ The credentials the CLI is running under don't have permission to patch transfer
 The DTS service account that owns the scheduled query (visible in `bq show --transfer_config`) needs `bigquery.reservationAssignments.use` on the target reservation. Grant it on the reservation's admin project. Once granted, re-run `apply --confirm`.
 
 **`exit 7 — partial`**
-Some configs failed to patch. The CLI wrote a run-state file at `~/.cache/followrabbit/optimize/bq-pricing-model/scheduled-queries/run-<id>.json` listing the failures. Re-run with `--resume <id>` to retry only the failed ones.
+Some configs failed to patch. The CLI wrote a run-state file at `~/.cache/followrabbit/optimize/bq-compute-pricing-model/scheduled-queries/run-<id>.json` listing the failures. Re-run with `--resume <id>` to retry only the failed ones.
 
 **Scheduled query started failing the morning after `apply`**
 Almost certainly an IAM gap on the executing SA — check that `bigquery.reservationAssignments.use` is granted on the reservation that's now in the `SET @@reservation` line. If unsure, run `revert --confirm` to roll back, fix the IAM, and re-`apply`.
