@@ -60,7 +60,10 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 ## Skills
 
 - **cost-review** — Scans local Terraform and SQL files, runs AI-powered cost analysis via the FollowRabbit API, presents optimization instructions, and offers to apply suggestions directly to code. User-invocable via `/followrabbit:cost-review`.
+- **optimize-bq-compute-pricing-model-scheduled-queries** — Sets the optimal pricing model on every BigQuery scheduled query in a project or folder. Drives the `followrabbit optimize bq-compute-pricing-model scheduled-queries` command tree (alias: `followrabbit optimize sq-pricing`). Always runs `recommend` first, confirms with the user, then `apply --confirm`. Full `revert` and `status` support. User-invocable via `/followrabbit:optimize-bq-compute-pricing-model-scheduled-queries`.
 
-## Agent
+## Agents
 
 - **cost-optimizer** — (Claude Code only) Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`. In Codex, the same proactive behavior is provided by the `cost-review` skill with implicit invocation enabled.
+
+The `optimize-bq-compute-pricing-model-scheduled-queries` skill ships its Claude Code subagent inside the skill folder (`skills/optimize-bq-compute-pricing-model-scheduled-queries/agents/claude.md`) — it activates contextually for BigQuery scheduled-query pricing discussions. In Codex, the same behavior is provided by the matching skill with implicit invocation.

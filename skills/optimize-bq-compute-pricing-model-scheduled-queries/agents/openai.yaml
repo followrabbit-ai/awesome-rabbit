@@ -1,0 +1,11 @@
+interface:
+  display_name: "FollowRabbit Scheduled-Query Pricing Optimizer"
+  short_description: "Set the optimal pricing model — slot-reservation or on-demand — on every BigQuery scheduled query in a project or GCP folder."
+  brand_color: "#F97316"
+  default_prompt:
+    - "Optimize the pricing model on my BigQuery scheduled queries."
+    - "Should my scheduled queries run on a reservation or on-demand?"
+    - "Show me which scheduled queries Rabbit is managing in this project."
+    - "Revert all the scheduled-query reservation changes Rabbit made."
+policy:
+  allow_implicit_invocation: true
