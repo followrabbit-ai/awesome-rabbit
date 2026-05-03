@@ -52,7 +52,7 @@ Activate when the user:
 
 ## What this tool does (do not re-implement client-side)
 
-The CLI sends each scheduled query's `TransferConfig` to the `bq-job-optimizer` service. The service makes the recommendation, rewrites the SQL with a fenced `SET @@reservation` block, returns the optimized config. The CLI patches it back via the BQ Data Transfer Service API. **Never parse the SQL yourself, never decide reservation paths yourself** — relay the optimizer's decision and the user's confirmation.
+The CLI sends each scheduled query's `TransferConfig` to the `bq-job-optimizer` service. The service makes the recommendation, rewrites the SQL with a leading `SET @@reservation` line + a trailing label-style metadata block, returns the optimized config. The CLI patches it back via the BQ Data Transfer Service API. **Never parse the SQL yourself, never decide reservation paths yourself** — relay the optimizer's decision and the user's confirmation. Format reference: [`followrabbit-cli/README.md`](../../../followrabbit-cli/README.md#deep-dive-optimize-bq-compute-pricing-model-scheduled-queries).
 
 ## Available commands
 

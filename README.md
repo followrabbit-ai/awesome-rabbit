@@ -65,4 +65,5 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 ## Agents
 
 - **cost-optimizer** — (Claude Code only) Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`. In Codex, the same proactive behavior is provided by the `cost-review` skill with implicit invocation enabled.
-- **scheduled-query-pricing-optimizer** — (Claude Code only) Activates when the user discusses BigQuery scheduled-query pricing, reservation routing, or asks which scheduled queries Rabbit is managing. Drives the `optimize bq-compute-pricing-model scheduled-queries` command tree end-to-end. In Codex, the matching skill provides the same behavior via implicit invocation.
+
+The `optimize-bq-compute-pricing-model-scheduled-queries` skill ships its Claude Code subagent inside the skill folder (`skills/optimize-bq-compute-pricing-model-scheduled-queries/agents/claude.md`) — it activates contextually for BigQuery scheduled-query pricing discussions. In Codex, the same behavior is provided by the matching skill with implicit invocation.

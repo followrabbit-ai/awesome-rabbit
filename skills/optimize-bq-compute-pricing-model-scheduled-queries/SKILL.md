@@ -18,7 +18,9 @@ user-invocable: true
 
 This skill drives the `followrabbit` CLI to set the optimal pricing model on every BigQuery scheduled query in scope. The transformation lives server-side: the CLI sends each `TransferConfig` to the optimizer service, receives back either a fully-rewritten config or a structured skip reason, then patches the optimized config back via the BQ Data Transfer Service API. You orchestrate; never interpret SQL yourself.
 
-The CLI rewrites each managed scheduled query's SQL with a fenced `SET @@reservation` statement, and encodes the tracking UUID, timestamp, and decision reason in the fence comment (BQ DTS TransferConfigs have no labels field). Re-runs are idempotent.
+The CLI rewrites each managed scheduled query's SQL with a leading `SET @@reservation` line and a trailing comment block at the end carrying tracking metadata in label-style key/value pairs (`rabbit-job-optimization-id`, `rabbit-original-reservation-id`, `rabbit-optimized-reservation-id`, etc.). The trailing block keeps Rabbit's metadata out of the customer's view at the top of the query while still letting Rabbit's pipeline join executed jobs to optimizer decisions via `INFORMATION_SCHEMA.JOBS_BY_PROJECT.query`. Re-runs are idempotent — the UUID is parsed out of the trailing block and reused. BQ DTS `TransferConfig` has no labels field, so the trailing block is the single source of truth for tracking.
+
+For the full layout customers will see in the BQ console, see [`followrabbit-cli/README.md`](../../followrabbit-cli/README.md#deep-dive-optimize-bq-compute-pricing-model-scheduled-queries).
 
 ## When to Use
 
