@@ -69,12 +69,24 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 
 ## Data sent to the FollowRabbit API
 
-When the `cost-review` skill or `cost-optimizer` agent runs, the local `followrabbit` CLI sends parsed Terraform (`*.tf`) and SQL (`*.sql`) content from your working directory to `https://api.agentic.followrabbit.ai` over HTTPS. Specifically:
+When the `cost-review` skill or `cost-optimizer` agent runs, the local `followrabbit` CLI's `costreview` command sends data to `https://api.agentic.followrabbit.ai` (default; overridable with `--api-url`) over HTTPS:
 
-- Resource types, configuration blocks, and labels from `*.tf` files.
-- Query text and table identifiers from `*.sql` files.
-- Repository name and the working-directory path.
+- **Full file contents of every `*.tf`, `*.tfvars`, and `*.tfvars.json` file** under the working directory, up to a combined 512 KiB budget (over-budget files are listed by path only).
+- **Full file contents of every `*.sql` file** under the working directory, with each file capped at 100 KiB.
+- **Relative paths** (from the scan root) of every file listed above.
+- A summarized index of Terraform resources, modules, and `.tfvars` environment files extracted from those files (alongside, not instead of, the raw content).
+- The skill IDs requested and, optionally, a model override.
 
-It does **not** send file contents outside `*.tf` and `*.sql`, environment variables, credentials, secrets, `.git` history, or files matched by `.gitignore`. API keys stay local in `~/.config/followrabbit/` and travel only in the `Authorization` header.
+It does **not** send file contents outside `*.tf` / `*.tfvars` / `*.tfvars.json` / `*.sql`, the absolute working-directory path, your hostname, username, OS, environment variables, `.git/` history, or branch state. Directories whose name starts with `.` (e.g. `.git`, `.terraform`) and `node_modules` are skipped during the scan.
+
+The CLI does **not** read or honor `.gitignore` — any non-hidden directory listed in `.gitignore` will still be scanned. Any secret placed inside a `.tf`, `.tfvars`, or `.sql` file will be transmitted as part of that file's content.
+
+Other commands:
+
+- `followrabbit context` — local only, no API call.
+- `followrabbit status` — sends only your API key.
+- `followrabbit recos list` — sends your git `origin` remote URL (auto-detected) as a `?repo=` query parameter.
+
+API keys are stored locally under `~/.config/followrabbit/credentials.json` (mode `0600`) and travel only in the `X-Rabbit-Api-Key` request header (never in bodies or URLs). Every request also includes a `User-Agent: followrabbit-cli/<version>` header. No telemetry, analytics, error-reporting, or update-check traffic is generated.
 
 See [followrabbit.ai/privacy](https://followrabbit.ai/privacy) for full details.
