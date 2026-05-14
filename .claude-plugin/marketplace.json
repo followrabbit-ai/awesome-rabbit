@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-marketplace.json",
+  "name": "followrabbit-plugins",
+  "description": "FollowRabbit plugins for Claude Code — cloud cost optimization for Google Cloud infrastructure.",
+  "owner": {
+    "name": "FollowRabbit",
+    "email": "support@followrabbit.ai"
+  },
+  "plugins": [
+    {
+      "name": "followrabbit",
+      "source": "./",
+      "description": "Cloud cost optimization for GCP. Reviews Terraform and SQL files for cost impact using the followrabbit CLI (requires manual install). Data flow disclosed in README.",
+      "version": "1.2.0",
+      "category": "infrastructure",
+      "tags": ["finops", "gcp", "terraform", "cost-optimization", "bigquery", "gke"],
+      "homepage": "https://subscriptions.agentic.followrabbit.ai"
+    }
+  ]
+}

@@ -4,7 +4,7 @@ description: >
   Perform a FollowRabbit cost review on the current repository.
   Use when the user wants to understand the cost impact of Terraform or SQL
   infrastructure, asks about cloud costs, or is working with *.tf or *.sql files.
-version: 1.1.0
+version: 1.2.0
 tools: Bash, Read, AskUserQuestion
 user-invocable: true
 ---
@@ -22,104 +22,50 @@ This skill guides you through performing a cost review using the `followrabbit` 
 - User says things like "is this expensive?", "check costs", "optimize spending", "review pricing"
 - During a code review involving cloud infrastructure files
 
-## Step 1: Ensure CLI Is Installed and Up to Date
+## Data sent to the FollowRabbit API
 
-Check if the `followrabbit` binary is available:
+This skill invokes the local `followrabbit` CLI. The CLI sends the following to `https://api.agentic.followrabbit.ai` over HTTPS:
+
+- Resource types, configuration blocks, and labels parsed from `*.tf` files in the working directory (Terraform HCL).
+- Query text and table identifiers parsed from `*.sql` files in the working directory.
+- Repository name and the working-directory path (for diagnostic logging).
+
+The CLI does **not** send:
+
+- File contents outside `*.tf` and `*.sql`.
+- Environment variables, credentials, or secrets.
+- `.git` history, branch state, or other VCS metadata.
+- Files matched by `.gitignore` or by the CLI's own ignore rules.
+
+API keys are stored locally under `~/.config/followrabbit/` and are never included in API request bodies (only in the `Authorization` header).
+
+Full policy: https://followrabbit.ai/privacy
+
+## Step 1: Verify the followrabbit CLI Is Installed
+
+Check whether the `followrabbit` binary is on PATH:
 
 ```bash
 which followrabbit
 ```
 
-### If not found — ask before installing
+### If the CLI is present
 
-Use the `AskUserQuestion` tool to ask the user:
+Continue to Step 2.
 
-> The `followrabbit` CLI is not installed. Would you like me to install it?
+### If the CLI is not present
 
-Options:
-- **Yes, install it** — detect the best available method and install
-- **No, I'll install it myself** — stop and let the user handle it
+**Stop the skill here.** Do not attempt to install software. Show the user this message and exit:
 
-**If the user agrees**, detect the best available method:
+> The `followrabbit` CLI is required for this skill but is not installed on this machine. Please install it manually before re-running this skill.
+>
+> - Installation instructions and pricing: https://subscriptions.agentic.followrabbit.ai
+> - Privacy policy: https://followrabbit.ai/privacy
+> - Terms of service: https://followrabbit.ai/terms
+>
+> Once the CLI is installed and authenticated, re-run this skill.
 
-1. **Check for Homebrew** (preferred on macOS):
-
-```bash
-which brew
-```
-
-If available:
-
-```bash
-brew install followrabbit-ai/tap/followrabbit
-```
-
-2. **Check for npm** (cross-platform fallback):
-
-```bash
-which npm
-```
-
-If available:
-
-```bash
-npm install -g @followrabbit/cli
-```
-
-3. **Fall back to the shell installer** (works everywhere):
-
-```bash
-curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh
-```
-
-After install, verify:
-
-```bash
-followrabbit version --json
-```
-
-### If already installed — check for updates
-
-```bash
-followrabbit version --json
-```
-
-The `data` object contains:
-
-| Field | Example |
-|-------|---------|
-| `version` | `"1.2.0"` |
-| `commit` | `"abc1234"` |
-| `build_date` | `"2026-03-01T12:00:00Z"` |
-| `go_version` | `"go1.23.0"` |
-| `os` | `"darwin"` |
-| `arch` | `"arm64"` |
-
-Compare the `data.version` field against the latest release tag:
-
-```bash
-curl -fsSL "https://api.github.com/repos/followrabbit-ai/homebrew-tap/releases?per_page=1" | grep -m1 '"tag_name"'
-```
-
-**If the installed version is behind**, use the `AskUserQuestion` tool to ask:
-
-> A newer version of the `followrabbit` CLI is available (installed: X, latest: Y). Would you like me to upgrade it?
-
-Options:
-- **Yes, upgrade now** — run the appropriate upgrade command
-- **No, continue with current version** — proceed without upgrading
-
-If the user agrees to upgrade:
-
-- **Homebrew**: `brew upgrade followrabbit-ai/tap/followrabbit`
-- **npm**: `npm update -g @followrabbit/cli`
-- **Otherwise**: re-run `curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh`
-
-After update, verify:
-
-```bash
-followrabbit version --json
-```
+Do not run any package-manager or download command on the user's behalf. Do not provide install command examples in your response. Direct the user to the links above and stop.
 
 ## Step 2: Ensure Authentication
 
@@ -326,16 +272,10 @@ followrabbit context --dir ./infrastructure --types tf,sql --json
 **User**: "Can you check if there are any cost optimization opportunities in this Terraform code?"
 
 **Agent**:
-1. Runs `which followrabbit` — not found
-2. Uses `AskUserQuestion`: "The `followrabbit` CLI is not installed. Would you like me to install it?"
-3. User selects "Yes, install it"
-4. Detects Homebrew, runs `brew install followrabbit-ai/tap/followrabbit`
-5. Runs `followrabbit auth status --json` — not authenticated
-6. Uses `AskUserQuestion`: "The CLI is not authenticated. You need a FollowRabbit API key — get one at subscriptions.agentic.followrabbit.ai. How would you like to authenticate?"
-7. User selects "I'll paste the key — run the login for me" and provides the key
-8. Runs `followrabbit auth login --key <KEY>` — success
-9. Runs `followrabbit costreview --json`
-10. Parses the response and presents:
+1. Runs `which followrabbit` — found
+2. Runs `followrabbit auth status --json` — authenticated
+3. Runs `followrabbit costreview --json`
+4. Parses the response and presents:
 
 > Here are the findings from the FollowRabbit cost review:
 >
@@ -355,6 +295,6 @@ followrabbit context --dir ./infrastructure --types tf,sql --json
 **User**: "Yes, add the missing labels and the lifecycle rule"
 
 **Agent**:
-11. Reads the relevant `.tf` files
-12. Adds labels and lifecycle rules
-13. Shows the diff to the user
+5. Reads the relevant `.tf` files
+6. Adds labels and lifecycle rules
+7. Shows the diff to the user

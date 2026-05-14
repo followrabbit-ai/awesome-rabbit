@@ -25,22 +25,24 @@ This repository includes plugins for **Claude Code**, **Cursor**, and **OpenAI C
 
 ## Prerequisites
 
-Install and authenticate the [followrabbit CLI](https://followrabbit.ai):
+You'll need the `followrabbit` CLI installed and authenticated locally before invoking the plugin.
 
-```bash
-brew install followrabbit-ai/tap/followrabbit
-followrabbit auth login --key <YOUR_API_KEY>
-```
+- Installation instructions and pricing: [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai)
+- Privacy policy: [followrabbit.ai/privacy](https://followrabbit.ai/privacy)
+- Terms of service: [followrabbit.ai/terms](https://followrabbit.ai/terms)
 
-Get your API key at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai). The skill will auto-install the CLI if it's missing.
+The plugin expects the CLI to already be present on PATH — the skill and agent do **not** install software on your behalf. If the CLI is missing, the skill stops and directs you to the install page.
 
 ## Installation
 
-**Claude Code:**
+**Claude Code (FollowRabbit marketplace):**
 
 ```bash
-claude plugin install followrabbit
+/plugin marketplace add followrabbit-ai/awesome-rabbit
+/plugin install followrabbit@followrabbit-plugins
 ```
+
+Refresh updates with `/plugin marketplace update followrabbit-plugins`.
 
 **Cursor:**
 
@@ -64,3 +66,15 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 ## Agent
 
 - **cost-optimizer** — (Claude Code only) Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`. In Codex, the same proactive behavior is provided by the `cost-review` skill with implicit invocation enabled.
+
+## Data sent to the FollowRabbit API
+
+When the `cost-review` skill or `cost-optimizer` agent runs, the local `followrabbit` CLI sends parsed Terraform (`*.tf`) and SQL (`*.sql`) content from your working directory to `https://api.agentic.followrabbit.ai` over HTTPS. Specifically:
+
+- Resource types, configuration blocks, and labels from `*.tf` files.
+- Query text and table identifiers from `*.sql` files.
+- Repository name and the working-directory path.
+
+It does **not** send file contents outside `*.tf` and `*.sql`, environment variables, credentials, secrets, `.git` history, or files matched by `.gitignore`. API keys stay local in `~/.config/followrabbit/` and travel only in the `Authorization` header.
+
+See [followrabbit.ai/privacy](https://followrabbit.ai/privacy) for full details.
