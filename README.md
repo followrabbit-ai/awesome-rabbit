@@ -25,22 +25,24 @@ This repository includes plugins for **Claude Code**, **Cursor**, and **OpenAI C
 
 ## Prerequisites
 
-Install and authenticate the [followrabbit CLI](https://followrabbit.ai):
+You'll need the `followrabbit` CLI installed and authenticated locally before invoking the plugin.
 
-```bash
-brew install followrabbit-ai/tap/followrabbit
-followrabbit auth login --key <YOUR_API_KEY>
-```
+- Installation instructions and pricing: [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai)
+- Privacy policy: [followrabbit.ai/privacy](https://followrabbit.ai/privacy)
+- Terms of service: [followrabbit.ai/terms](https://followrabbit.ai/terms)
 
-Get your API key at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai). The skill will auto-install the CLI if it's missing.
+The plugin expects the CLI to already be present on PATH — the skill and agent do **not** install software on your behalf. If the CLI is missing, the skill stops and directs you to the install page.
 
 ## Installation
 
-**Claude Code:**
+**Claude Code (FollowRabbit marketplace):**
 
 ```bash
-claude plugin install followrabbit
+/plugin marketplace add followrabbit-ai/awesome-rabbit
+/plugin install followrabbit@followrabbit-plugins
 ```
+
+Refresh updates with `/plugin marketplace update followrabbit-plugins`.
 
 **Cursor:**
 
@@ -64,3 +66,27 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 ## Agent
 
 - **cost-optimizer** — (Claude Code only) Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`. In Codex, the same proactive behavior is provided by the `cost-review` skill with implicit invocation enabled.
+
+## Data sent to the FollowRabbit API
+
+When the `cost-review` skill or `cost-optimizer` agent runs, the local `followrabbit` CLI's `costreview` command sends data to `https://api.agentic.followrabbit.ai` (default; overridable with `--api-url`) over HTTPS:
+
+- **Full file contents of every `*.tf`, `*.tfvars`, and `*.tfvars.json` file** under the working directory, up to a combined 512 KiB budget (over-budget files are listed by path only).
+- **Full file contents of every `*.sql` file** under the working directory, with each file capped at 100 KiB.
+- **Relative paths** (from the scan root) of every file listed above.
+- A summarized index of Terraform resources, modules, and `.tfvars` environment files extracted from those files (alongside, not instead of, the raw content).
+- The skill IDs requested and, optionally, a model override.
+
+It does **not** send file contents outside `*.tf` / `*.tfvars` / `*.tfvars.json` / `*.sql`, the absolute working-directory path, your hostname, username, OS, environment variables, `.git/` history, or branch state. Directories whose name starts with `.` (e.g. `.git`, `.terraform`) and `node_modules` are skipped during the scan.
+
+The CLI does **not** read or honor `.gitignore` — any non-hidden directory listed in `.gitignore` will still be scanned.
+
+Other commands:
+
+- `followrabbit context` — local only, no API call.
+- `followrabbit status` — sends only your API key.
+- `followrabbit recos list` — sends your git `origin` remote URL (auto-detected) as a `?repo=` query parameter.
+
+API keys are stored locally under `~/.config/followrabbit/credentials.json` (mode `0600`) and travel only in the `X-Rabbit-Api-Key` request header (never in bodies or URLs). Every request also includes a `User-Agent: followrabbit-cli/<version>` header. No telemetry, analytics, error-reporting, or update-check traffic is generated.
+
+See [followrabbit.ai/privacy](https://followrabbit.ai/privacy) for full details.

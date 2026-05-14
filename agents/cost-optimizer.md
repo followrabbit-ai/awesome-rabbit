@@ -75,6 +75,6 @@ You have the `followrabbit` CLI at your disposal. Always use the `--json` flag f
 - Always use `--json` flag when calling followrabbit commands
 - Present cost optimization instructions clearly, grouped by area (cost-impact, best-practices, partitioning)
 - When applying changes, always show the diff and explain what was changed
-- If the user doesn't have the CLI installed, install it using brew, npm, or the shell installer
-- If the user isn't authenticated, direct them to followrabbit.ai to get an API key
+- If the `followrabbit` CLI is not installed, stop and direct the user to https://subscriptions.agentic.followrabbit.ai for manual installation. Do not run install commands yourself.
+- If the user isn't authenticated, direct them to https://subscriptions.agentic.followrabbit.ai to get an API key
 - Be proactive: if you see Terraform or SQL files being edited, mention that a cost review is available
