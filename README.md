@@ -79,7 +79,7 @@ When the `cost-review` skill or `cost-optimizer` agent runs, the local `followra
 
 It does **not** send file contents outside `*.tf` / `*.tfvars` / `*.tfvars.json` / `*.sql`, the absolute working-directory path, your hostname, username, OS, environment variables, `.git/` history, or branch state. Directories whose name starts with `.` (e.g. `.git`, `.terraform`) and `node_modules` are skipped during the scan.
 
-The CLI does **not** read or honor `.gitignore` — any non-hidden directory listed in `.gitignore` will still be scanned. Any secret placed inside a `.tf`, `.tfvars`, or `.sql` file will be transmitted as part of that file's content.
+The CLI does **not** read or honor `.gitignore` — any non-hidden directory listed in `.gitignore` will still be scanned.
 
 Other commands:
 

@@ -39,7 +39,7 @@ The `costreview` command does **not** send:
 - `.git/` history, branch state, or any VCS metadata.
 - Files inside directories whose name starts with `.` (e.g. `.git`, `.terraform`) or inside `node_modules` — these are skipped during the scan.
 
-Note: the CLI does **not** read or honor `.gitignore`. Any non-hidden directory listed in `.gitignore` will still be scanned. Any secrets placed inside `.tf`, `.tfvars`, or `.sql` files will be transmitted as part of that file's content.
+Note: the CLI does **not** read or honor `.gitignore`. Any non-hidden directory listed in `.gitignore` will still be scanned.
 
 Other commands and what they send:
 
