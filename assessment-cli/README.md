@@ -7,6 +7,9 @@ It is designed for an operator with **limited visibility** — only project-leve
 access. Every query is project-scoped, and any project, location, or category
 the operator cannot read is **skipped and reported**, never fatal.
 
+> **Can't run Python 3?** A dependency-light Bash port (`gcloud` + `bq` only,
+> no Python) lives in [`bash/`](bash/README.md) — for hosts stuck on Python 2.
+
 ## What it collects
 
 For each accessible project, in each requested BigQuery location:
