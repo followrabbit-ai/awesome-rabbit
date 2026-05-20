@@ -212,9 +212,19 @@ def generate_report(run_dir: Path) -> Path:
     )
 
     # --- Per-category detail --------------------------------------------
+    pricing = manifest.get("pricing", {})
+    storage_default = next(
+        (p.get("default_storage_billing_model", "LOGICAL") for p in pricing.values()),
+        "LOGICAL",
+    )
     lines.append("## Collected Data\n")
     for unit in UNITS:
         lines.append(f"### {unit.title}\n")
+        if unit.name == "storage_billing_model":
+            lines.append(
+                f"_Datasets with no explicit `storage_billing_model` option are "
+                f"assumed **{storage_default}**._\n"
+            )
         rows = _read_csv(run_dir / f"{unit.name}.csv")
         if not rows:
             lines.append("_No rows collected._\n")

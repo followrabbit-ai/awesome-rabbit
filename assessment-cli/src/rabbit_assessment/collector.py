@@ -13,7 +13,7 @@ from google.api_core import exceptions as gexc
 from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
 from . import sql
-from .categories import build_numbers
+from .categories import build_literals, build_numbers
 from .config import PricingConfig
 from .models import CollectionError, CollectionResult, utc_now
 
@@ -54,6 +54,7 @@ def collect(
             project_id=project_id,
             location=location,
             numbers=build_numbers(unit_name, lookback_days, pricing),
+            literals=build_literals(unit_name, pricing),
         )
     except (sql.SqlRenderError, KeyError) as exc:
         return CollectionError(

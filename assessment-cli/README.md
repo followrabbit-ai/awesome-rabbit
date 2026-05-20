@@ -95,6 +95,7 @@ python rabbit_assess.py report --run-dir ./rabbit-assessment-output/<run-id>
 | `--lookback-days` | `30` | analysis window |
 | `--currency` | `USD` | report's local-currency column; FX is auto-derived |
 | `--config` | — | TOML pricing file (negotiated rates) |
+| `--default-storage-billing-model` | `LOGICAL` | model assumed for datasets with no explicit `storage_billing_model` option (`LOGICAL` or `PHYSICAL`) |
 | `--categories` | all | restrict to a subset; repeatable |
 | `--dry-run` | off | render + print SQL, no queries |
 
@@ -106,13 +107,17 @@ slot_hour_price = 0.04
 ondemand_price = 6.25
 storage_logical_active_price = 0.02
 storage_physical_active_price = 0.04
+# Billing model assumed for datasets with no explicit option (default: LOGICAL)
+default_storage_billing_model = "LOGICAL"
 
 [pricing.locations.eu]
 slot_hour_price = 0.044
 ```
 
 Precedence: CLI flag > `BQCOST_*` env var > config location override > config
-base > built-in BigQuery list price.
+base > built-in default. Every key above (including
+`default_storage_billing_model`) can also be set per the precedence chain via a
+`--…` flag or a `BQCOST_…` environment variable.
 
 ## Output
 
