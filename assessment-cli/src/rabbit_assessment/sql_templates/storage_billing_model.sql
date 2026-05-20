@@ -67,10 +67,12 @@ SELECT
   ROUND(monthly_cost_physical, 2) AS monthly_cost_physical,
   ROUND(IF(current_billing_model = 'PHYSICAL', monthly_cost_physical, monthly_cost_logical), 2)
                                   AS monthly_cost_current,
+  -- Saving = current cost - cheapest available model. Always >= 0 (it is 0
+  -- when the dataset is already on the optimal model). NOT "other model -
+  -- current", which goes negative whenever the current model is the cheaper one.
   ROUND(
-    IF(current_billing_model = 'PHYSICAL',
-       monthly_cost_physical - monthly_cost_logical,
-       monthly_cost_logical  - monthly_cost_physical),
+    IF(current_billing_model = 'PHYSICAL', monthly_cost_physical, monthly_cost_logical)
+    - LEAST(monthly_cost_logical, monthly_cost_physical),
     2)                            AS potential_monthly_saving,
   CASE
     WHEN current_billing_model = 'PHYSICAL'
