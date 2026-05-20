@@ -307,12 +307,14 @@ append_result() {  # append_result CATEGORY PROJECT LOCATION CSV_FILE
   if [ ! -s "$dest" ]; then
     printf 'project_id,location,collected_at,%s\n' "$(head -1 "$file")" >"$dest"
   fi
-  local line
-  while IFS= read -r line; do
+  # `|| [ -n "$line" ]` processes the final row even if bq ever omits the
+  # trailing newline, so no row is dropped. Rows are counted as written, so
+  # ROWCOUNT reflects exactly what landed in the CSV.
+  local line n=0
+  while IFS= read -r line || [ -n "$line" ]; do
     printf '%s,%s,%s,%s\n' "$pid" "$loc" "$RUN_TS_ISO" "$line" >>"$dest"
+    n=$((n + 1))
   done < <(tail -n +2 "$file")
-  local n=$(( $(wc -l <"$file") - 1 ))
-  [ "$n" -lt 0 ] && n=0
   ROWCOUNT[$cat]=$(( ${ROWCOUNT[$cat]:-0} + n ))
 }
 
