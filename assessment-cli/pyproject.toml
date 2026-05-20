@@ -1,0 +1,50 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "rabbit-assessment"
+version = "0.1.0"
+description = "Assess a GCP/BigQuery environment for cost-saving opportunities with Rabbit (FollowRabbit)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "FollowRabbit" }]
+dependencies = [
+    "typer>=0.12",
+    "rich>=13.7",
+    "google-cloud-bigquery>=3.25",
+    "google-cloud-resource-manager>=1.12",
+    "google-cloud-billing>=1.13",
+    "google-auth>=2.30",
+    "pydantic>=2.7",
+    "tenacity>=8.3",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "ruff>=0.5", "mypy>=1.10"]
+
+[project.scripts]
+rabbit-assess = "rabbit_assessment.cli:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/rabbit_assessment"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+
+[tool.ruff.lint.per-file-ignores]
+# Typer's documented pattern is to call typer.Option() in argument defaults.
+"src/rabbit_assessment/cli.py" = ["B008"]
+
+[tool.mypy]
+python_version = "3.11"
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

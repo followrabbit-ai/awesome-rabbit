@@ -1,0 +1,6 @@
+# Development dependencies (linting, type-checking, tests).
+#   pip install -r requirements-dev.txt
+-r requirements.txt
+pytest>=8
+ruff>=0.5
+mypy>=1.10

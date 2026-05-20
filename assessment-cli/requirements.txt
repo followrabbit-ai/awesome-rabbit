@@ -1,0 +1,12 @@
+# Runtime dependencies for rabbit-assess.
+# Install with plain pip — no poetry or uv required:
+#   python3 -m venv .venv && source .venv/bin/activate
+#   pip install -r requirements.txt
+typer>=0.12
+rich>=13.7
+google-cloud-bigquery>=3.25
+google-cloud-resource-manager>=1.12
+google-cloud-billing>=1.13
+google-auth>=2.30
+pydantic>=2.7
+tenacity>=8.3
