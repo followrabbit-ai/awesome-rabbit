@@ -390,13 +390,16 @@ generate_report() {
   local report="$RUN_DIR/report.md"
   local total_pl=$(( ${#PROJECTS[@]} * ${#LOCATIONS[@]} ))
 
-  local job_saving storage_saving failed_cost billed utilized waste_cost cap_hours
+  local job_saving storage_saving failed_cost failed_hours billed utilized
+  local waste_cost cap_hours cap_cost
   job_saving=$(csv_sum "$RUN_DIR/pricing_model_optimization.csv" possible_saving)
   storage_saving=$(csv_sum "$RUN_DIR/storage_billing_model.csv" potential_monthly_saving recommendation KEEP)
   failed_cost=$(csv_sum "$RUN_DIR/failed_jobs_general.csv" cost)
+  failed_hours=$(csv_sum "$RUN_DIR/failed_jobs_general.csv" slot_hours)
   billed=$(csv_sum "$RUN_DIR/reservation_waste.csv" billed_slot_hours)
   utilized=$(csv_sum "$RUN_DIR/reservation_waste.csv" utilized_slot_hours)
   cap_hours=$(csv_sum_lastcol "$RUN_DIR/failed_jobs_capacity.csv")
+  cap_cost=$(mul "$cap_hours" "$SLOT_HOUR_PRICE")
   waste_cost=$(awk -v b="$billed" -v u="$utilized" -v p="$SLOT_HOUR_PRICE" \
     'BEGIN { d=b-u; if(d<0)d=0; printf "%.2f", d*p }')
   local windowed
@@ -458,7 +461,10 @@ generate_report() {
     echo "| Reservation waste ($(fmt "$(awk -v b="$billed" -v u="$utilized" 'BEGIN{d=b-u;if(d<0)d=0;print d}')") idle slot-hours) | ${LOOKBACK_DAYS}d | $(cost_cells "$waste_cost") |"
     echo "| **Total (${LOOKBACK_DAYS}-day, excl. monthly storage)** | ${LOOKBACK_DAYS}d | $(cost_cells "$windowed") |"
     echo
-    echo "> Capacity-related failed jobs additionally burned $cap_hours slot-hours."
+    echo "> Failed-job slots over the window - capacity-related failures are a"
+    echo "> SUBSET of all failed jobs, not additional:"
+    echo "> - all failed jobs: $failed_hours slot-hours"
+    echo "> - of which capacity/resource-related: $cap_hours slot-hours ($cap_cost cost)"
     echo
     echo "## Collected Data"
     echo

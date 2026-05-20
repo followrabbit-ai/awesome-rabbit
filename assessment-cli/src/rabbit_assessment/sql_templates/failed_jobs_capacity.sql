@@ -19,6 +19,10 @@ SELECT
   SUM(total_slot_ms) / 1000 / 3600     AS slot_hours
 FROM `${project_id}`.`region-${region}`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE error_result IS NOT NULL
+  -- Top-level jobs only. A SCRIPT's total_slot_ms already rolls up all its
+  -- child statements, and a failed script carries error_result on BOTH the
+  -- parent and the failing child — counting both double-counts the slots.
+  AND parent_job_id IS NULL
   AND error_result.reason NOT IN (
       'accessDenied', 'invalidQuery', 'invalid', 'notFound', 'responseTooLarge',
       'backendError', 'internalError', 'duplicate', 'quotaExceeded', 'rateLimitExceeded')

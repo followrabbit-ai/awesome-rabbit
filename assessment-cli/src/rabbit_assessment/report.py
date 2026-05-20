@@ -68,6 +68,7 @@ class _Aggregates:
 
         failed_rows = _read_csv(run_dir / "failed_jobs_general.csv")
         self.failed_cost = sum(_to_float(r.get("cost")) for r in failed_rows)
+        self.failed_slot_hours = sum(_to_float(r.get("slot_hours")) for r in failed_rows)
 
         capacity_rows = _read_csv(run_dir / "failed_jobs_capacity.csv")
         self.capacity_slot_hours = sum(_to_float(r.get("slot_hours")) for r in capacity_rows)
@@ -216,9 +217,14 @@ def generate_report(run_dir: Path) -> Path:
     )
     lines.append("")
     lines.append(
-        f"> Capacity-related failed jobs additionally burned "
-        f"{_fmt(agg.capacity_slot_hours)} slot-hours "
-        f"(~{cur} {_fmt(agg.capacity_cost)} / USD {_fmt(agg.usd(agg.capacity_cost))}).\n"
+        "> Failed-job slots over the window — capacity-related failures are a "
+        "**subset** of all failed jobs (not additional):"
+    )
+    lines.append(f"> - all failed jobs: {_fmt(agg.failed_slot_hours)} slot-hours")
+    lines.append(
+        f"> - of which capacity/resource-related: {_fmt(agg.capacity_slot_hours)} "
+        f"slot-hours ({cur} {_fmt(agg.capacity_cost)} / "
+        f"USD {_fmt(agg.usd(agg.capacity_cost))})\n"
     )
 
     # --- Per-category detail --------------------------------------------
