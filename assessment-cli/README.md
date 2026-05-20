@@ -25,11 +25,23 @@ For each accessible project, in each requested BigQuery location:
 
 ## Install
 
+Plain `pip` only — no poetry, no uv, no build step:
+
 ```bash
 cd assessment-cli
-python -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
+python3 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 ```
+
+The tool then runs through the `rabbit_assess.py` launcher:
+
+```bash
+python rabbit_assess.py --help
+```
+
+> Optional: `pip install .` installs it as a package and adds a `rabbit-assess`
+> command on your `PATH`. This still uses only `pip`. For development (tests,
+> linting), use `pip install -r requirements-dev.txt`.
 
 ## Authenticate
 
@@ -56,19 +68,22 @@ Missing a role only skips the affected category — the run still completes.
 
 ## Usage
 
+Run via the launcher (`python rabbit_assess.py ...`). If you installed the
+package with `pip install .`, the `rabbit-assess` command is equivalent.
+
 ```bash
 # Single project, last 7 days
-rabbit-assess run --scope project:my-project --location US --lookback-days 7
+python rabbit_assess.py run --scope project:my-project --location US --lookback-days 7
 
 # A folder, two locations, EUR report
-rabbit-assess run --scope folder:123456789 \
+python rabbit_assess.py run --scope folder:123456789 \
   --location US --location EU --currency EUR --config pricing.toml
 
 # Render SQL without running anything
-rabbit-assess run --scope project:my-project --location US --dry-run
+python rabbit_assess.py run --scope project:my-project --location US --dry-run
 
 # Regenerate the report from an existing run (no API calls)
-rabbit-assess report --run-dir ./rabbit-assessment-output/<run-id>
+python rabbit_assess.py report --run-dir ./rabbit-assessment-output/<run-id>
 ```
 
 ### Key options

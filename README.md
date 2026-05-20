@@ -10,6 +10,9 @@ This repository aims to provide tools, scripts, and code snippets for current an
 - [assessment/bq-pricing-model-optimization](assessment/bq-pricing-model-optimization/):
   - SQL scripts for analyzing and optimizing BigQuery pricing models at both the project and organization level.
 
+- [assessment-cli](assessment-cli/):
+  - A Python command-line tool that assesses a GCP/BigQuery environment and quantifies cost-saving opportunities with Rabbit. Given an organization, folder, or project scope it enumerates accessible projects, runs project-scoped `INFORMATION_SCHEMA` queries across reservations, capacity commitments, job pricing-model and storage billing-model optimization, failed-job cost, and reservation waste, then writes per-category CSVs and a dual-currency Markdown savings report. Built for operators with project-level access only — anything it cannot read is skipped and reported, never fatal. Installs with plain `pip` (no poetry or uv).
+
 - [gcs-insights-and-usage-logs](gcs-insights-and-usage-logs/):
   - Rabbit is capable of providing deep folder or object level insights and storage class recommendations with automated class management based on the access patterns. In order to do this, we need to enable Storage Insights and Usage Logs on the target buckets. This Terraform module is designed to configure Google Cloud Storage Insights and Usage Logs for specified target buckets. It automates the setup of necessary resources, including report buckets, IAM roles, and report configurations.
 
