@@ -150,6 +150,7 @@ def run(
 
     row_counts = writers.write_category_csvs(run_dir, results)
     writers.write_errors_csv(run_dir, errors)
+    writers.write_query_error_log(run_dir, errors)
     writers.write_rendered_sql(run_dir, results)
     writers.write_manifest(
         run_dir,

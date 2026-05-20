@@ -123,8 +123,11 @@ EOF
 
 log() {  # log LEVEL message...
   local level=$1; shift
+  local line; line="$(date -u +%H:%M:%S) [$level] $*"
+  # Everything is persisted to run.log; only the console echo is gated by -v.
+  [ -n "${RUN_DIR:-}" ] && echo "$line" >>"$RUN_DIR/run.log"
   if [ "$level" = "DEBUG" ] && [ "$VERBOSE" -ne 1 ]; then return 0; fi
-  echo "$(date -u +%H:%M:%S) [$level] $*" >&2
+  echo "$line" >&2
 }
 
 die() { echo "rabbit-assess: $*" >&2; exit 1; }
@@ -328,10 +331,21 @@ collect_one() {  # collect_one CATEGORY PROJECT LOCATION REGION
   else
     # bq writes BigQuery errors to stderr but CSV-formatting errors to stdout,
     # so scan both.
-    local msg
-    msg=$(cat "$err" "$out" | tr -d '\r' | grep -v -e '^Waiting' -e '^$' \
-          | head -2 | tr '\n' ' ')
+    local full msg
+    full=$(cat "$err" "$out" | tr -d '\r' | grep -v -e '^Waiting' -e '^$')
+    msg=$(printf '%s\n' "$full" | head -2 | tr '\n' ' ')
     record_error "$pid" "$loc" "$cat" "QueryError" "${msg:-bq query failed}"
+    # Full error text + the exact failing SQL, for investigation.
+    {
+      echo "=============================================================================="
+      echo "[$RUN_TS_ISO] $cat  project=$pid  location=$loc"
+      echo "error_class: QueryError"
+      echo "---- error ----"
+      printf '%s\n' "${full:-bq query failed (no output)}"
+      echo "---- rendered SQL ----"
+      printf '%s\n' "$sql"
+      echo
+    } >>"$RUN_DIR/query-errors.log"
   fi
   rm -f "$out" "$err"
 }
@@ -362,6 +376,12 @@ fmt() { awk -v a="$1" 'BEGIN { printf "%.2f", a+0 }'; }
 cost_cells() {  # cost_cells AMOUNT
   local usd; usd=$(mul "$1" "$EXCHANGE_RATE")
   if [ "$CURRENCY" = "USD" ]; then echo "$usd"; else echo "$(fmt "$1") | $usd"; fi
+}
+
+is_selected() {  # is_selected CATEGORY -> true if it was part of this run
+  local c
+  for c in "${CATEGORIES[@]}"; do [ "$c" = "$1" ] && return 0; done
+  return 1
 }
 
 generate_report() {
@@ -408,6 +428,7 @@ generate_report() {
     echo "|---|---|---|---|---|"
     local cat
     for cat in "${ALL_CATEGORIES[@]}"; do
+      is_selected "$cat" || continue
       local errs=${ERR_BY_CAT[$cat]:-0}
       local ok=$(( total_pl - errs ))
       [ "$ok" -lt 0 ] && ok=0
@@ -420,6 +441,11 @@ generate_report() {
       echo "| ${CATEGORY_TITLE[$cat]} | $ok/$total_pl | $errs | ${ROWCOUNT[$cat]:-0} | $reason |"
     done
     echo
+    if [ "$ERROR_COUNT" -gt 0 ]; then
+      echo "$ERROR_COUNT unit(s) skipped. Short index: \`errors.csv\`. Full error text"
+      echo "and the failing SQL for each: \`query-errors.log\`. Run log: \`run.log\`."
+      echo
+    fi
     echo "## Estimated Savings Opportunities"
     echo
     echo "| Opportunity | Period | $cur_hdr |"
@@ -435,6 +461,7 @@ generate_report() {
     echo "## Collected Data"
     echo
     for cat in "${ALL_CATEGORIES[@]}"; do
+      is_selected "$cat" || continue
       echo "### ${CATEGORY_TITLE[$cat]}"
       echo
       if [ "$cat" = "storage_billing_model" ]; then

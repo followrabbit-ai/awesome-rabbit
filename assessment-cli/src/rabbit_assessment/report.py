@@ -104,12 +104,16 @@ def _coverage(manifest: dict[str, Any], errors: list[dict[str, str]]) -> list[di
     projects = manifest.get("projects", [])
     locations = manifest.get("locations", [])
     attempted = max(len(projects) * len(locations), 0)
+    # Only the categories actually selected for this run were attempted.
+    selected = set(manifest.get("units") or [u.name for u in UNITS])
     errors_by_unit: dict[str, list[dict[str, str]]] = defaultdict(list)
     for error in errors:
         errors_by_unit[error.get("category", "")].append(error)
 
     rows: list[dict[str, Any]] = []
     for unit in UNITS:
+        if unit.name not in selected:
+            continue
         unit_errors = errors_by_unit.get(unit.name, [])
         succeeded = attempted - len(unit_errors)
         reason = ""
@@ -165,6 +169,12 @@ def generate_report(run_dir: Path) -> Path:
             f"| {cov['skipped']} | {row_counts.get(unit.name, 0)} | {cov['reason'] or '-'} |"
         )
     lines.append("")
+    if errors:
+        lines.append(
+            f"{len(errors)} unit(s) skipped. Short index: `errors.csv`. "
+            "Full error text and the failing SQL for each: `query-errors.log`. "
+            "Run log: `run.log`.\n"
+        )
 
     # --- Savings summary -------------------------------------------------
     # When the currency is USD the local and USD columns are identical, so a
@@ -303,7 +313,8 @@ def print_console_summary(run_dir: Path, console: Console) -> None:
     console.print(table)
 
     attempted = len(manifest.get("projects", [])) * len(manifest.get("locations", []))
-    total_units = attempted * len(UNITS)
+    selected_units = manifest.get("units") or [u.name for u in UNITS]
+    total_units = attempted * len(selected_units)
     skipped = len(errors)
     succeeded = total_units - skipped
     style = "green" if skipped == 0 else "yellow"

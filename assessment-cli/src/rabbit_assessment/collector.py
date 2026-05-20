@@ -57,17 +57,23 @@ def collect(
             literals=build_literals(unit_name, pricing),
         )
     except (sql.SqlRenderError, KeyError) as exc:
+        detail = str(exc)
+        log.warning("SQL render failed: %s/%s/%s: %s", project_id, location, unit_name, detail)
         return CollectionError(
-            project_id, location, unit_name, type(exc).__name__, str(exc), utc_now()
+            project_id, location, unit_name, type(exc).__name__,
+            detail.replace("\n", " ")[:300], utc_now(), detail=detail,
         )
 
     try:
         rows = _run_query(client, rendered, location)
     except Exception as exc:  # noqa: BLE001 - skip-and-continue is the core requirement
-        message = str(exc).strip().replace("\n", " ")[:500]
-        log.debug("Collection failed: %s/%s/%s: %s", project_id, location, unit_name, message)
+        detail = str(exc).strip()
+        message = detail.replace("\n", " ")[:300]
+        # WARNING (not DEBUG) so the failure lands in run.log at default verbosity.
+        log.warning("Collection failed: %s/%s/%s: %s", project_id, location, unit_name, message)
         return CollectionError(
-            project_id, location, unit_name, type(exc).__name__, message, utc_now()
+            project_id, location, unit_name, type(exc).__name__, message, utc_now(),
+            detail=detail, rendered_sql=rendered,
         )
 
     return CollectionResult(project_id, location, unit_name, rows, rendered, utc_now())

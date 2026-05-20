@@ -70,12 +70,16 @@ Each run writes `rabbit-assessment-output/<run-id>/`:
 ```
 report.md            savings report (coverage, opportunities, samples)
 manifest.txt         run parameters and counts (key=value)
-errors.csv           every skipped (project, location, category) with reason
+errors.csv           every skipped (project, location, category) — short index
+query-errors.log     full error text + the failing SQL for each skip
+run.log              full run log
 <category>.csv        raw aggregated rows per category
 ```
 
 Any project, location, or category the operator cannot read is **skipped and
-recorded in `errors.csv`** — the run always completes.
+recorded** — the run always completes. `errors.csv` is the short index;
+`query-errors.log` has the full `bq` error and the exact SQL that failed, for
+investigation.
 
 ## Differences vs. the Python tool
 

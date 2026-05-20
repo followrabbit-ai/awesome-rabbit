@@ -26,7 +26,11 @@ class CollectionResult:
 
 @dataclass
 class CollectionError:
-    """A collection unit that failed or was skipped. The run continues anyway."""
+    """A collection unit that failed or was skipped. The run continues anyway.
+
+    `message` is the short form for errors.csv; `detail` and `rendered_sql`
+    are the full, untruncated context written to query-errors.log.
+    """
 
     project_id: str
     location: str
@@ -34,3 +38,5 @@ class CollectionError:
     error_class: str
     message: str
     occurred_at: str
+    detail: str = ""
+    rendered_sql: str = ""

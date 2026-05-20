@@ -129,10 +129,11 @@ Each run creates `rabbit-assessment-output/<run-id>/`:
 ```
 manifest.json          run parameters, resolved pricing, FX rate, counts
 report.md              savings report (coverage, opportunities, detail)
-errors.csv             every skipped (project, location, category) with reason
-<category>.csv         raw aggregated rows per category
+errors.csv             every skipped (project, location, category) — short index
+query-errors.log       full error text + the failing SQL for each skip
 rendered_sql/          the exact SQL that ran, per category
-run.log
+run.log                full run log (collection failures included)
+<category>.csv         raw aggregated rows per category
 ```
 
 ## Currency
