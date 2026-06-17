@@ -29,8 +29,13 @@ def load_template(name: str) -> str:
     """Return the raw text of a bundled SQL template."""
     if name not in _TEMPLATE_CACHE:
         try:
+            # resources.files() requires Python 3.9+; this package targets
+            # Python >=3.11 (see pyproject.toml), so the 3.7-compat rule is a
+            # false positive here.
             text = (
-                resources.files(_TEMPLATE_PACKAGE).joinpath(name).read_text(encoding="utf-8")
+                resources.files(_TEMPLATE_PACKAGE)  # nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2
+                .joinpath(name)
+                .read_text(encoding="utf-8")
             )
         except (FileNotFoundError, ModuleNotFoundError) as exc:
             raise SqlRenderError(f"Unknown SQL template: {name}") from exc
