@@ -19,8 +19,8 @@ This repository aims to provide tools, scripts, and code snippets for current an
 - [bq-backup-and-restore](bq-backup-and-restore/):
   - A command-line tool for creating and restoring backups of BigQuery datasets. Supports backing up all datasets in a project or specific datasets, with options for current state or point-in-time backups (last 7 days). Only backs up tables, excluding views, models, and other non-table objects.
 
-- [bq-proxy](bq-proxy/):
-  - A BigQuery dynamic pricing proxy that sits between your clients (Looker, dbt Cloud, Airflow, etc.) and the BigQuery REST API. It intercepts query and job requests, calls the Rabbit BQ Job Optimizer to automatically optimize job configuration (e.g. reservation routing), and streams responses transparently. Includes Terraform for Cloud Run deployment and a standalone performance test tool.
+- [bq-reverse-proxy](bq-reverse-proxy/):
+  - The **Rabbit BQ Reverse Proxy** deployment package. A transparent reverse proxy that sits between your clients (Looker, dbt Cloud, Airflow, etc.) and the BigQuery REST API. It intercepts job submissions (`jobs.insert`, `jobs.query`), calls the Rabbit BQ Job Optimizer to automatically optimize job configuration (e.g. reservation routing), and streams everything else through unchanged with a fail-open design. Includes ready-to-use Terraform for Cloud Run deployment (pulling Rabbit's published container image) and a standalone performance test tool.
 
 # Coding Agent Plugins
 

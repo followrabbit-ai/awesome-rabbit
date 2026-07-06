@@ -8,7 +8,7 @@ is validated before rendering. `string.Template` performs no escaping.
 from __future__ import annotations
 
 import re
-from importlib import resources
+from importlib import resources  # nosemgrep: python.lang.compatibility.python37.python37-compatibility-importlib2
 from string import Template
 
 # GCP project id rules: 6-30 chars, lowercase letter first, letters/digits/'-',

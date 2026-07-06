@@ -1,0 +1,61 @@
+# -----------------------------------------------------------------------
+# Required
+# -----------------------------------------------------------------------
+
+project_id = "my-gcp-project"
+region     = "europe-west3" # co-locate with your BigQuery datasets
+
+# Rabbit API key — provided by your Rabbit representative. Used for all
+# requests that don't carry their own `rabbit-api-key` header (i.e. all
+# standard BigQuery tools). Without it the proxy runs in pass-through mode.
+default_api_key = "your-rabbit-api-key"
+
+# -----------------------------------------------------------------------
+# Access model — pick one
+# -----------------------------------------------------------------------
+# BigQuery client SDKs cannot pass a Cloud Run IAM gate (they send BigQuery-
+# scoped OAuth tokens, not proxy-audience ID tokens), so IAM-gated invocation
+# does not work for normal BigQuery tools. Choose network-level protection:
+#
+# (A) Internal only — clients run inside your VPC / project (recommended
+#     when possible, e.g. Airflow/Composer, in-VPC dbt):
+#       allow_unauthenticated = true
+#       ingress               = "INGRESS_TRAFFIC_INTERNAL"
+#
+# (B) Public endpoint — needed for SaaS clients (Looker, dbt Cloud):
+#       allow_unauthenticated = true
+#       ingress               = "INGRESS_TRAFFIC_ALL"
+#     The proxy holds no data and no credentials — callers still need their
+#     own valid BigQuery OAuth token for any request to succeed.
+
+allow_unauthenticated = true
+ingress               = "INGRESS_TRAFFIC_ALL"
+
+# -----------------------------------------------------------------------
+# Image — pick the regional mirror closest to your Cloud Run region
+# -----------------------------------------------------------------------
+#   us-docker.pkg.dev/followrabbit-ai-public/images/bq-reverse-proxy
+#   europe-docker.pkg.dev/followrabbit-ai-public/images/bq-reverse-proxy
+#   asia-docker.pkg.dev/followrabbit-ai-public/images/bq-reverse-proxy
+
+image_registry = "europe-docker.pkg.dev/followrabbit-ai-public/images/bq-reverse-proxy"
+
+# -----------------------------------------------------------------------
+# Optional tuning (defaults shown)
+# -----------------------------------------------------------------------
+
+# Image version. "latest" tracks the newest release; pin a release tag
+# for explicit upgrade control (recommended in production).
+# image_tag = "v0.1.0"
+
+# Rabbit BQ Job Optimizer endpoint. The default is the global public
+# endpoint and is right for everyone; set to "" for pure pass-through
+# mode (no optimization).
+# bq_job_optimizer_url = "https://api.followrabbit.ai/bq-job-optimizer"
+
+# service_name  = "bq-reverse-proxy"
+# min_instances = 1
+# max_instances = 50
+# cpu           = "1"
+# memory        = "512Mi"
+# log_level     = "info"
