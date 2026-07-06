@@ -1,9 +1,7 @@
 locals {
-  # The image tag is either (a) explicitly set by the caller (escape hatch for
-  # Rabbit's dev environment that tracks per-commit master builds), or (b) the
-  # version baked into this module by release-please. Because the module's
-  # version moves in lockstep with its source ref, a customer pinning
-  # `?ref=v1.2.3` gets `v1.2.3` of the image automatically — no duplicate pin.
+  # The image tag comes from var.image_tag ("latest" by default; set a
+  # release tag like "v0.1.0" to pin). local.version is only the fallback
+  # when image_tag is explicitly set to null.
   resolved_image_tag = coalesce(var.image_tag, local.version)
   resolved_image     = "${var.image_registry}:${local.resolved_image_tag}"
 

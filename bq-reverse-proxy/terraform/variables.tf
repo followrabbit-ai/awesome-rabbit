@@ -16,11 +16,10 @@ variable "bq_job_optimizer_url" {
   type        = string
   description = <<EOT
 HTTPS base URL of the Rabbit BQ Job Optimizer service. The default is the
-global public endpoint behind Rabbit's load balancer — correct for customer
-deployments everywhere. Rabbit-internal environments override this with
-their env-specific URL. Set to empty string ("") for pure pass-through mode
-(no optimizer calls). If you override, verify the URL actually serves — the
-proxy fails open, so an unreachable optimizer silently disables optimization.
+global public endpoint — correct for all deployments. Set to empty string
+("") for pure pass-through mode (no optimizer calls). If you override,
+verify the URL actually serves — the proxy fails open, so an unreachable
+optimizer silently disables optimization.
 EOT
   default     = "https://api.followrabbit.ai/bq-job-optimizer"
 }

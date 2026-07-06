@@ -63,7 +63,17 @@ These are the same image — only the registry location differs. Any authenticat
 
 ## Deployment with Terraform
 
-The [terraform/](terraform/) directory contains a ready-to-use Terraform configuration that deploys the proxy to Cloud Run. It is a vendored copy of Rabbit's official deployment module — the same code Rabbit uses for its own environments.
+The [terraform/](terraform/) directory contains the official deployment module for the proxy — the same code Rabbit uses for its own environments and integration tests. You can run it directly as shown below, or consume it as a Terraform module from your own configuration:
+
+```hcl
+module "bq_reverse_proxy" {
+  source = "git::https://github.com/followrabbit-ai/awesome-rabbit.git//bq-reverse-proxy/terraform"
+
+  project_id      = "my-gcp-project"
+  region          = "europe-west3"
+  default_api_key = var.rabbit_api_key
+}
+```
 
 ### Step 1: Configure Variables
 
