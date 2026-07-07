@@ -1,3 +1,14 @@
+terraform {
+  required_version = ">= 1.6.0"
+
+  required_providers {
+    google = {
+      source  = "hashicorp/google"
+      version = ">= 5.0, < 8.0"
+    }
+  }
+}
+
 locals {
   # The image tag comes from var.image_tag ("latest" by default; set a
   # release tag like "v0.1.0" to pin). local.version is only the fallback

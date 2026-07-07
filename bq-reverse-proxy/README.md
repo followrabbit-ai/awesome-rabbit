@@ -41,11 +41,26 @@
 Before deploying, ensure you have:
 
 1. **A GCP project** with the following APIs enabled:
+  - Service Usage API (`serviceusage.googleapis.com`) — required to enable and manage the other APIs. On a brand-new project this is often disabled; enable it first (Console: [enable here](https://console.developers.google.com/apis/api/serviceusage.googleapis.com/overview), or `gcloud services enable serviceusage.googleapis.com --project YOUR_PROJECT`).
   - Cloud Run API (`run.googleapis.com`)
+  - IAM API (`iam.googleapis.com`) — Terraform creates a runtime service account for the proxy
   - BigQuery API (`bigquery.googleapis.com`)
+
+  Enable them all in one command:
+
+  ```bash
+  gcloud services enable \
+    serviceusage.googleapis.com \
+    run.googleapis.com \
+    iam.googleapis.com \
+    bigquery.googleapis.com \
+    --project YOUR_PROJECT
+  ```
 2. **Terraform** >= 1.6 installed locally ([install guide](https://developer.hashicorp.com/terraform/install))
-3. **gcloud CLI** authenticated with a principal that has permissions to create Cloud Run services, service accounts, and IAM bindings
-4. **A Rabbit API key** from your Rabbit representative — without it the proxy runs in pass-through mode (no optimization)
+3. **gcloud CLI** authenticated with a principal that has permissions to create Cloud Run services, service accounts, and IAM bindings. You need **two** logins:
+  - `gcloud auth login` — for gcloud CLI commands
+  - `gcloud auth application-default login` — Terraform's Google provider authenticates via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) (ADC), which is separate from your gcloud CLI login. Without ADC, `terraform plan`/`apply` fails with a credentials error.
+4. **A Rabbit API key** — create one yourself in the Rabbit UI at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) (no need to contact Rabbit support). Without it the proxy runs in pass-through mode (no optimization).
 
 ## Container Images
 
@@ -429,4 +444,4 @@ If you deployed the previous `bq-proxy` package from this repository:
 
 ## Support
 
-For issues with the proxy or to obtain an API key, contact your Rabbit representative or reach out to [support@followrabbit.ai](mailto:support@followrabbit.ai).
+Create your API key yourself in the Rabbit UI at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys). For any other issues with the proxy, contact your Rabbit representative or reach out to [support@followrabbit.ai](mailto:support@followrabbit.ai).
