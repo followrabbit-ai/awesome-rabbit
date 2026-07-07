@@ -1,0 +1,16 @@
+# Local Terraform state and working files — never commit these.
+# terraform.tfvars and *.tfstate can contain the Rabbit API key in plaintext.
+.terraform/
+.terraform.lock.hcl
+
+*.tfstate
+*.tfstate.*
+
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+tfplan
+*.tfplan
+crash.log
+crash.*.log

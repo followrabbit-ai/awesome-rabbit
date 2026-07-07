@@ -41,11 +41,26 @@
 Before deploying, ensure you have:
 
 1. **A GCP project** with the following APIs enabled:
+  - Service Usage API (`serviceusage.googleapis.com`) — required to enable and manage the other APIs. On a brand-new project this is often disabled; enable it first (Console: [enable here](https://console.developers.google.com/apis/api/serviceusage.googleapis.com/overview), or `gcloud services enable serviceusage.googleapis.com --project YOUR_PROJECT`).
   - Cloud Run API (`run.googleapis.com`)
+  - IAM API (`iam.googleapis.com`) — Terraform creates a runtime service account for the proxy
   - BigQuery API (`bigquery.googleapis.com`)
+
+  Enable them all in one command:
+
+  ```bash
+  gcloud services enable \
+    serviceusage.googleapis.com \
+    run.googleapis.com \
+    iam.googleapis.com \
+    bigquery.googleapis.com \
+    --project YOUR_PROJECT
+  ```
 2. **Terraform** >= 1.6 installed locally ([install guide](https://developer.hashicorp.com/terraform/install))
-3. **gcloud CLI** authenticated with a principal that has permissions to create Cloud Run services, service accounts, and IAM bindings
-4. **A Rabbit API key** from your Rabbit representative — without it the proxy runs in pass-through mode (no optimization)
+3. **gcloud CLI** authenticated with a principal that has permissions to create Cloud Run services, service accounts, and IAM bindings. You need **two** logins:
+  - `gcloud auth login` — for gcloud CLI commands
+  - `gcloud auth application-default login` — Terraform's Google provider authenticates via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) (ADC), which is separate from your gcloud CLI login. Without ADC, `terraform plan`/`apply` fails with a credentials error.
+4. **A Rabbit API key** — create one yourself in the Rabbit UI at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) (no need to contact Rabbit support). Without it the proxy runs in pass-through mode (no optimization).
 
 ## Container Images
 
@@ -197,6 +212,14 @@ api_endpoint: https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app
 All dbt jobs running in that environment will now route their BigQuery API calls through the proxy. You can configure this per-environment, so you can test with a staging environment first before applying to production.
 
 > dbt Cloud connects from outside your network, so this requires the **public** access model.
+
+**A few things that are easy to miss:**
+
+- **Your BigQuery credential still does the authentication.** The proxy only changes *where* the API calls go — it forwards your connection's existing credential (service-account key, OAuth, or WIF) to BigQuery untouched. It does not authenticate on your behalf, and it needs no BigQuery permissions of its own. If your connection's credential is missing or invalid, jobs fail with a normal BigQuery auth error, not a proxy error.
+- **Extended Attributes are set per environment.** Each environment you want routed — every deployment environment *and* the development (IDE) environment — needs its own `api_endpoint`. In dbt Cloud they are stored as a separate object attached to the environment, so be careful editing an environment through the API: an update that omits the extended-attributes reference will detach it and silently send traffic straight to BigQuery again.
+- **Include the full path if the proxy is behind a load balancer.** The example URL is a bare Cloud Run hostname, which is correct for the public access model. If you front the proxy with a load balancer on a path prefix (e.g. `https://api.example.com/bq-reverse-proxy`), set `api_endpoint` to that full URL including the prefix.
+
+To confirm traffic is actually flowing through the proxy, run a model and check that the proxy's `/metrics` counters (e.g. `bq_proxy_requests_total`) increase, or look at its logs for the forwarded job submissions.
 
 ### Apache Airflow
 
@@ -377,6 +400,16 @@ By default this package deploys the `latest` release tag. Because the tag itself
 terraform apply -replace="google_cloud_run_v2_service.proxy"
 ```
 
+> **Public deployments:** replacing the service destroys and recreates it, which wipes its IAM policy — including the `allUsers` invoker binding from `allow_unauthenticated = true`. The service will return `403` until the binding is re-applied. Replace the invoker binding in the **same** apply so it's recreated alongside the service:
+>
+> ```bash
+> terraform apply \
+>   -replace="google_cloud_run_v2_service.proxy" \
+>   -replace='google_cloud_run_v2_service_iam_member.public_invoker[0]'
+> ```
+>
+> Pinning `image_tag` (below) avoids this entirely — it updates the service in place without recreation.
+
 **Pinning versions instead (recommended for production change management):** set the `image_tag` variable to a release tag and bump it deliberately — each change is a normal, reviewable Terraform diff:
 
 ```hcl
@@ -429,4 +462,4 @@ If you deployed the previous `bq-proxy` package from this repository:
 
 ## Support
 
-For issues with the proxy or to obtain an API key, contact your Rabbit representative or reach out to [support@followrabbit.ai](mailto:support@followrabbit.ai).
+Create your API key yourself in the Rabbit UI at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys). For any other issues with the proxy, contact your Rabbit representative or reach out to [support@followrabbit.ai](mailto:support@followrabbit.ai).

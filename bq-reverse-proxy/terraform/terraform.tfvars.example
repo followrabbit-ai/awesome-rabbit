@@ -5,9 +5,11 @@
 project_id = "my-gcp-project"
 region     = "europe-west3" # co-locate with your BigQuery datasets
 
-# Rabbit API key — provided by your Rabbit representative. Used for all
-# requests that don't carry their own `rabbit-api-key` header (i.e. all
-# standard BigQuery tools). Without it the proxy runs in pass-through mode.
+# Rabbit API key — create one yourself in the Rabbit UI at
+# https://app.followrabbit.ai/api-keys (no need to contact Rabbit support).
+# Used for all requests that don't carry their own `rabbit-api-key` header
+# (i.e. all standard BigQuery tools). Without it the proxy runs in
+# pass-through mode.
 default_api_key = "your-rabbit-api-key"
 
 # -----------------------------------------------------------------------
