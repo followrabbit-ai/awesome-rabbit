@@ -392,6 +392,16 @@ By default this package deploys the `latest` release tag. Because the tag itself
 terraform apply -replace="google_cloud_run_v2_service.proxy"
 ```
 
+> **Public deployments:** replacing the service destroys and recreates it, which wipes its IAM policy — including the `allUsers` invoker binding from `allow_unauthenticated = true`. The service will return `403` until the binding is re-applied. Replace the invoker binding in the **same** apply so it's recreated alongside the service:
+>
+> ```bash
+> terraform apply \
+>   -replace="google_cloud_run_v2_service.proxy" \
+>   -replace='google_cloud_run_v2_service_iam_member.public_invoker[0]'
+> ```
+>
+> Pinning `image_tag` (below) avoids this entirely — it updates the service in place without recreation.
+
 **Pinning versions instead (recommended for production change management):** set the `image_tag` variable to a release tag and bump it deliberately — each change is a normal, reviewable Terraform diff:
 
 ```hcl
