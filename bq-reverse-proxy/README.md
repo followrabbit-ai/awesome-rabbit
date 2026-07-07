@@ -213,6 +213,14 @@ All dbt jobs running in that environment will now route their BigQuery API calls
 
 > dbt Cloud connects from outside your network, so this requires the **public** access model.
 
+**A few things that are easy to miss:**
+
+- **Your BigQuery credential still does the authentication.** The proxy only changes *where* the API calls go — it forwards your connection's existing credential (service-account key, OAuth, or WIF) to BigQuery untouched. It does not authenticate on your behalf, and it needs no BigQuery permissions of its own. If your connection's credential is missing or invalid, jobs fail with a normal BigQuery auth error, not a proxy error.
+- **Extended Attributes are set per environment.** Each environment you want routed — every deployment environment *and* the development (IDE) environment — needs its own `api_endpoint`. In dbt Cloud they are stored as a separate object attached to the environment, so be careful editing an environment through the API: an update that omits the extended-attributes reference will detach it and silently send traffic straight to BigQuery again.
+- **Include the full path if the proxy is behind a load balancer.** The example URL is a bare Cloud Run hostname, which is correct for the public access model. If you front the proxy with a load balancer on a path prefix (e.g. `https://api.example.com/bq-reverse-proxy`), set `api_endpoint` to that full URL including the prefix.
+
+To confirm traffic is actually flowing through the proxy, run a model and check that the proxy's `/metrics` counters (e.g. `bq_proxy_requests_total`) increase, or look at its logs for the forwarded job submissions.
+
 ### Apache Airflow
 
 For Airflow deployments running BigQuery operators (e.g. `BigQueryInsertJobOperator`), set the `BIGQUERY_EMULATOR_HOST` environment variable on your Airflow workers:
