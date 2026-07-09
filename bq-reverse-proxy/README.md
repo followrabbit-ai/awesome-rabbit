@@ -148,9 +148,64 @@ Protect the endpoint at the network layer instead:
 
 For the **public** model, note what exposure actually means: the proxy is stateless and holds no data — an anonymous caller without a valid BigQuery OAuth token gets errors from BigQuery, exactly as if they hit `bigquery.googleapis.com` directly. If you want to additionally restrict which networks can reach a public endpoint, put it behind a load balancer with [Cloud Armor](https://cloud.google.com/armor) IP allowlists.
 
+## Using Multiple API Keys with One Deployment
+
+Optimization behavior (pricing mode, reservations, enabled optimizations) is configured on the Rabbit side **per API key**. If all your traffic should use the same settings, one `default_api_key` is all you need — skip this section.
+
+To give different workloads different settings (e.g. dbt production on a reservation, Looker dashboards on-demand), create one API key per workload in the [Rabbit UI](https://app.followrabbit.ai/api-keys) and route each workload to its key. The proxy resolves the key for each request in this order:
+
+1. **`rabbit-api-key` request header** (optional) — for custom code using the BigQuery SDKs, where you can inject HTTP headers (Java's `FixedHeaderProvider`, a custom `http.Client` in Go). Standard tools (Looker, dbt, Airflow, `bq` CLI, JDBC/ODBC drivers) **cannot** send custom headers — see the [capability summary](#client-capability-summary).
+2. **Path alias** — the mechanism for everything else. Configure aliases in Terraform:
+
+   ```hcl
+   api_key_routes = {
+     dbt    = "rabbit-key-for-dbt"
+     looker = "rabbit-key-for-looker"
+   }
+   ```
+
+   Then point each workload's BigQuery endpoint at `https://<proxy-url>/<alias>`:
+
+   ```
+   dbt    →  https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app/dbt
+   Looker →  https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app/looker
+   ```
+
+   Every client appends the standard `/bigquery/v2/...` path to the endpoint it is given, so requests arrive as `/<alias>/bigquery/v2/...`; the proxy strips the alias, uses that alias's API key, and forwards the canonical path to BigQuery. The API key itself never appears in URLs or request logs — only the alias does.
+3. **`default_api_key`** — fallback for requests that match neither.
+
+Aliases are single path segments of your choosing (they cannot be `bigquery`, `upload`, `batch`, `discovery`, `healthz`, `readyz`, or `metrics`). Adding, removing, or rotating a routed key is a `terraform apply` (in-place revision, no downtime). Requests with an unknown first path segment are forwarded to BigQuery unchanged, which returns a normal 404.
+
+All client integration guides below work identically with an alias URL — wherever a guide says to use the proxy URL, append `/<alias>`.
+
+### Client Capability Summary
+
+How each supported client points at the proxy, and which options it has for supplying a dedicated API key. Every client can always fall back to `default_api_key` (no key configuration on the client at all). The `rabbit-api-key` header is always optional — where it is supported it is simply an alternative to a path alias.
+
+| Client | Endpoint configuration | `rabbit-api-key` header | Path alias |
+|---|---|---|---|
+| Python (`google-cloud-bigquery`) | `client_options.api_endpoint` or `BIGQUERY_EMULATOR_HOST` | ❌ | ✅ |
+| Java (`google-cloud-bigquery`) | `BigQueryOptions.setHost(...)` | ✅ `FixedHeaderProvider` | ✅ |
+| Node.js (`@google-cloud/bigquery`) | `apiEndpoint` constructor option | ❌ | ✅ |
+| Go (`cloud.google.com/go/bigquery`) | `option.WithEndpoint(.../bigquery/v2/)` | ✅ custom `http.Client` | ✅ |
+| C# / .NET (`Google.Cloud.BigQuery.V2`) | `BigQueryClientBuilder.BaseUri` | ❌ | ✅ |
+| dbt Core | `BIGQUERY_EMULATOR_HOST` env var | ❌ | ✅ |
+| dbt Cloud | Extended Attributes `api_endpoint` | ❌ | ✅ |
+| Airflow / Cloud Composer / Astronomer | `BIGQUERY_EMULATOR_HOST` env var | ❌ | ✅ |
+| Dagster / Mage / Prefect | `BIGQUERY_EMULATOR_HOST` env var | ❌ | ✅ |
+| Looker | JDBC `rootUrl` via user attribute | ❌ | ✅ |
+| Metabase | **Alternate hostname** field | ❌ | ✅ |
+| Lightdash | **BigQuery URL override** field | ❌ | ✅ |
+| `bq` CLI | `--api` flag | ❌ | ✅ |
+| JDBC (Simba driver) | connection URL / `rootUrl` property | ❌ | ✅ |
+
+Only custom code using the Java or Go SDK can send the header; every standard tool relies on a path alias for a dedicated key, or on `default_api_key`.
+
 ## Connecting Your Clients to the Proxy
 
 Once deployed, configure your BigQuery clients to send requests to the proxy URL instead of the default `bigquery.googleapis.com` endpoint. Below are integration guides for common tools.
+
+> **Multiple workloads?** Each example below uses the bare proxy URL, which resolves to `default_api_key`. To route a client to a specific API key, use `https://<proxy-url>/<alias>` instead — see [Using Multiple API Keys with One Deployment](#using-multiple-api-keys-with-one-deployment).
 
 ### Python (google-cloud-bigquery)
 
@@ -262,6 +317,20 @@ resource "google_composer_environment" "test" {
 
 All DAGs running in the Composer environment will automatically route their BigQuery API calls through the proxy.
 
+### Astronomer
+
+Astronomer-hosted Airflow works the same way as self-managed Airflow: set `BIGQUERY_EMULATOR_HOST=https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app` as a deployment environment variable (Deployment → Variables in the Astronomer UI, or via `astro deployment variable create`). See the [Astronomer environment variables documentation](https://www.astronomer.io/docs/astro/environment-variables).
+
+> Astronomer deployments connect from outside your network, so this requires the **public** access model.
+
+### Dagster / Mage / Prefect
+
+These orchestrators all use the `google-cloud-bigquery` Python library under the hood, so the same environment variable works — set it on the workers/agents that execute your pipelines (Docker, Kubernetes, etc.):
+
+```bash
+export BIGQUERY_EMULATOR_HOST=https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app
+```
+
 ### Looker
 
 Looker connects to BigQuery via JDBC. You can route Looker's BigQuery traffic through the proxy by overriding the JDBC `rootUrl` parameter using a **user attribute**. This approach lets you roll out the change gradually — starting with a few test users before enabling it for everyone.
@@ -330,6 +399,29 @@ https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app
 
 All Looker users will now have their BigQuery traffic routed through the proxy. To revert at any time, change the default value back to `https://bigquery.googleapis.com`.
 
+### Metabase
+
+1. Navigate to **Admin → Databases** and select your BigQuery database.
+2. Expand the advanced options and set the **Alternate hostname** field to the proxy URL:
+
+```
+https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app
+```
+
+3. Save. All Metabase queries against that database now route through the proxy.
+
+> Metabase Cloud connects from outside your network, so this requires the **public** access model. Self-hosted Metabase inside your VPC can use the internal model.
+
+### Lightdash
+
+In your project's connection settings, find the **BigQuery URL override** section and set it to the proxy URL:
+
+```
+https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app
+```
+
+> Lightdash Cloud connects from outside your network, so this requires the **public** access model.
+
 ### bq CLI
 
 ```bash
@@ -342,6 +434,72 @@ bq --api https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app query "SELECT 1"
 jdbc:bigquery://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app:443;ProjectId=my-project;OAuthType=...
 ```
 
+### Java (google-cloud-bigquery)
+
+```java
+BigQuery bigquery = BigQueryOptions.newBuilder()
+    .setProjectId("my-gcp-project")
+    .setHost("https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app")
+    .build()
+    .getService();
+```
+
+Java is also one of the few clients that can send the `rabbit-api-key` header directly — an alternative to path aliases for per-workload keys:
+
+```java
+import com.google.api.gax.rpc.FixedHeaderProvider;
+
+BigQuery bigquery = BigQueryOptions.newBuilder()
+    .setProjectId("my-gcp-project")
+    .setHost("https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app")
+    .setHeaderProvider(FixedHeaderProvider.create("rabbit-api-key", System.getenv("RABBIT_API_KEY")))
+    .build()
+    .getService();
+```
+
+### Node.js (@google-cloud/bigquery)
+
+```js
+const { BigQuery } = require("@google-cloud/bigquery");
+
+const bigquery = new BigQuery({
+  projectId: "my-gcp-project",
+  apiEndpoint: "https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app",
+});
+```
+
+### Go (cloud.google.com/go/bigquery)
+
+The Go client takes the full API base URL including the `/bigquery/v2/` path:
+
+```go
+client, err := bigquery.NewClient(ctx, "my-gcp-project",
+    option.WithEndpoint("https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app/bigquery/v2/"))
+```
+
+For per-workload keys, either use a path alias (`.../myalias/bigquery/v2/`) or inject the `rabbit-api-key` header with a custom `http.Client` via `option.WithHTTPClient`.
+
+### C# / .NET (Google.Cloud.BigQuery.V2)
+
+The .NET client takes the full API base URL including the `/bigquery/v2/` path:
+
+```csharp
+var client = new BigQueryClientBuilder
+{
+    ProjectId = "my-gcp-project",
+    BaseUri = "https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app/bigquery/v2/",
+}.Build();
+```
+
+### Clients that cannot be routed
+
+These tools offer no BigQuery API endpoint override, so they cannot use the proxy (or any BigQuery proxy):
+
+- Google Looker Studio (Data Studio)
+- Google Connected Sheets
+- GCP-managed Dataform
+- BigQuery console UI
+
 ## Configuration Reference
 
 ### Terraform Variables
@@ -352,7 +510,8 @@ jdbc:bigquery://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app:443;ProjectId=my-projec
 | `project_id` | **Yes** | — | GCP project ID for deployment |
 | `region` | **Yes** | — | GCP region for the Cloud Run service |
 | `bq_job_optimizer_url` | No | `https://api.followrabbit.ai/bq-job-optimizer` | Rabbit BQ Job Optimizer URL. The default is the global public endpoint — right for everyone. `""` = pass-through mode |
-| `default_api_key` | No | `null` | Rabbit API key used for requests without a `rabbit-api-key` header. In practice: set it (standard BQ tools can't send custom headers) |
+| `default_api_key` | No | `null` | Rabbit API key used for requests without a `rabbit-api-key` header or path alias. In practice: set it (standard BQ tools can't send custom headers) |
+| `api_key_routes` | No | `{}` | Map of URL path alias → Rabbit API key for multi-workload routing (see [Using Multiple API Keys](#using-multiple-api-keys-with-one-deployment)) |
 | `image_registry` | No | `europe-docker.pkg.dev/.../bq-reverse-proxy` | Registry path without tag (see [Container Images](#container-images)) |
 | `image_tag` | No | `latest` | Image version to deploy. Set a release tag (e.g. `v0.1.0`) to pin |
 | `allow_unauthenticated` | No | `false` | Grant `run.invoker` to `allUsers` (see [Choosing an Access Model](#choosing-an-access-model)) |
@@ -387,6 +546,7 @@ These are the environment variables the proxy container reads. The Terraform con
 | `BQ_JOB_OPTIMIZER_URL` | _(empty = pass-through)_ | `bq_job_optimizer_url` | Rabbit optimizer base URL. The Terraform default is `https://api.followrabbit.ai/bq-job-optimizer` |
 | `BQ_JOB_OPTIMIZER_TIMEOUT` | `2s` | `bq_job_optimizer_timeout` | Optimizer call timeout |
 | `DEFAULT_API_KEY` | _(unset)_ | `default_api_key` | Fallback Rabbit API key |
+| `API_KEY_ROUTES` | _(unset)_ | `api_key_routes` | Path alias → key map, `alias1=key1,alias2=key2` |
 | `REQUEST_TIMEOUT` | `10m` | `request_timeout` | Upstream request timeout |
 | `MAX_BODY_BYTES` | `1048576` | `max_body_bytes` | Max buffered body size |
 | `LOG_LEVEL` | `info` | `log_level` | Log verbosity |

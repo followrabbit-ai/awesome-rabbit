@@ -77,6 +77,37 @@ EOT
   default     = null
 }
 
+variable "api_key_routes" {
+  type        = map(string)
+  sensitive   = true
+  description = <<EOT
+Map of URL path alias => Rabbit API key, for running multiple workloads
+(each with its own API key and optimization settings) through one proxy
+deployment. Clients that cannot send the `rabbit-api-key` header point
+their BigQuery endpoint at `https://<proxy-url>/<alias>` and the proxy
+resolves the key from the alias. Example:
+
+  api_key_routes = {
+    dbt    = var.rabbit_api_key_dbt
+    looker = var.rabbit_api_key_looker
+  }
+
+Aliases must be single path segments and must not collide with reserved
+segments (bigquery, upload, batch, discovery, healthz, readyz, metrics).
+Key resolution order in the proxy: `rabbit-api-key` header, then path
+alias, then `default_api_key`.
+EOT
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for alias, _ in var.api_key_routes :
+      can(regex("^[^/]+$", alias)) && !contains(["bigquery", "upload", "batch", "discovery", "healthz", "readyz", "metrics"], alias)
+    ])
+    error_message = "Aliases must be single path segments and must not be a reserved segment (bigquery, upload, batch, discovery, healthz, readyz, metrics)."
+  }
+}
+
 # -----------------------------------------------------------------------
 # Runtime knobs
 # -----------------------------------------------------------------------
