@@ -144,6 +144,17 @@ resource "google_cloud_run_v2_service" "proxy" {
           value = var.default_api_key
         }
       }
+
+      # Optional: API_KEY_ROUTES maps URL path aliases to API keys for
+      # clients that cannot send the `rabbit-api-key` header. Rendered as
+      # "alias1=key1,alias2=key2".
+      dynamic "env" {
+        for_each = length(var.api_key_routes) == 0 ? [] : [1]
+        content {
+          name  = "API_KEY_ROUTES"
+          value = join(",", [for alias, key in var.api_key_routes : "${alias}=${key}"])
+        }
+      }
     }
   }
 
