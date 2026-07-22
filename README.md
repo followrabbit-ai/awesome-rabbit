@@ -22,6 +22,9 @@ This repository aims to provide tools, scripts, and code snippets for current an
 - [bq-reverse-proxy](bq-reverse-proxy/):
   - The **Rabbit BQ Reverse Proxy** deployment package. A transparent reverse proxy that sits between your clients (Looker, dbt Cloud, Airflow, etc.) and the BigQuery REST API. It intercepts job submissions (`jobs.insert`, `jobs.query`), calls the Rabbit BQ Job Optimizer to automatically optimize job configuration (e.g. reservation routing), and streams everything else through unchanged with a fail-open design. Includes ready-to-use Terraform for Cloud Run deployment (pulling Rabbit's published container image) and a standalone performance test tool.
 
+- [vpc-sc-helper](vpc-sc-helper/):
+  - A read-only bash helper for customers whose VPC Service Controls perimeters block Rabbit's data loading. Given the violation id(s) from Rabbit's error reports, it finds the denial in your audit logs, names the exact perimeter, and prints the minimal ingress/egress rule plus dry-run-first `gcloud` commands to apply it.
+
 # Coding Agent Plugins
 
 This repository includes plugins for **Claude Code**, **Cursor**, and **OpenAI Codex** that bring FollowRabbit cost optimization directly into your coding agent workflow. The plugins are thin documentation layers — skills teach the AI agent when and how to invoke the `followrabbit` CLI.
