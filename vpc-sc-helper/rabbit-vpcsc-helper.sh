@@ -42,10 +42,12 @@ selectors() { # service perms(newline-separated, may be empty)
   perms=$(grep -v 'vpcsc.permissions.unavailable' <<<"$perms" | sort -u | sed '/^$/d' || true)
   if [[ "$service" == "bigquery.googleapis.com" && -n "$perms" ]]; then
     sed 's/^/      - permission: /' <<<"$perms"
-  elif [[ "$service" == "bigqueryreservation.googleapis.com" ]]; then
-    echo "      - method: '*'   # this service supports no method-level selectors"
+  elif [[ "$service" == "storage.googleapis.com" ]]; then
+    echo "      - method: google.storage.objects.list"
+    echo "      - method: google.storage.objects.get"
+    echo "      - method: google.storage.buckets.get"
   else
-    echo "      - method: '*'"
+    echo "      - method: '*'   # this service supports no method-level selectors"
   fi
 }
 
