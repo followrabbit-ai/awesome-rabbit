@@ -5,7 +5,9 @@
 # from an error message Rabbit reports, e.g. "D8Sdsrm..."), this script:
 #   1. finds the matching policy-audit log entry in your logs,
 #   2. identifies the exact perimeter that produced the denial,
-#   3. prints the minimal ingress/egress rule needed for Rabbit's service account,
+#   3. prints the MINIMAL ingress/egress rule needed for Rabbit's service account
+#      (permission-level method selectors where the service supports them,
+#       resources scoped to the affected project),
 #   4. prints the exact gcloud commands (dry-run first) to apply it.
 #
 # It performs READ-ONLY operations. You review and run the printed commands.
@@ -30,6 +32,22 @@ while [[ $# -gt 0 ]]; do
 done
 [[ -n "$SCOPE_VAL" && ${#IDS[@]} -gt 0 ]] || { echo "usage: $0 --org ORG_ID VIOLATION_ID..."; exit 1; }
 command -v jq >/dev/null || { echo "jq is required"; exit 1; }
+
+# Emit methodSelectors for a service given the exact permissions from the
+# violation. bigquery.googleapis.com supports permission-level selectors;
+# bigqueryreservation.googleapis.com supports none (method '*' is forced);
+# other services default to method '*' (narrow later if Google adds support).
+selectors() { # service perms(newline-separated, may be empty)
+  local service="$1" perms="$2"
+  perms=$(grep -v 'vpcsc.permissions.unavailable' <<<"$perms" | sort -u | sed '/^$/d' || true)
+  if [[ "$service" == "bigquery.googleapis.com" && -n "$perms" ]]; then
+    sed 's/^/      - permission: /' <<<"$perms"
+  elif [[ "$service" == "bigqueryreservation.googleapis.com" ]]; then
+    echo "      - method: '*'   # this service supports no method-level selectors"
+  else
+    echo "      - method: '*'"
+  fi
+}
 
 for VID in "${IDS[@]}"; do
   echo "==================================================================="
@@ -65,14 +83,24 @@ for VID in "${IDS[@]}"; do
   fi
 
   if [[ "$N_INGRESS" -gt 0 ]]; then
-    TARGETS=$(jq -r '[.protoPayload.metadata.ingressViolations[].targetResource] | unique | join(", ")' <<<"$ENTRY")
-    echo "  direction : INGRESS (into $TARGETS)"
+    TARGETS=$(jq -r '[.protoPayload.metadata.ingressViolations[].targetResource] | unique | .[]' <<<"$ENTRY")
+    PERMS=$(jq -r '[.protoPayload.metadata.ingressViolations[].targetResourcePermissions[]?] | unique | .[]' <<<"$ENTRY")
+    echo "  direction : INGRESS (into $(tr '\n' ' ' <<<"$TARGETS"))"
+    if grep -q 'bigquery.tables.getData' <<<"$PERMS"; then
+      echo "  NOTE: this call reads billing-export ROWS (tables.getData). Keep this"
+      echo "        rule's resources scoped to the billing-export project(s) below —"
+      echo "        do NOT widen getData to every project in the perimeter."
+    fi
     cat <<EOF
 
   --- Add this INGRESS rule to perimeter '$PERIMETER_SHORT' ---
   # Sources must be 'Any': Rabbit's callers run on serverless infrastructure whose
   # requests cannot be attributed to a source project/network by VPC-SC. Access is
-  # gated by the identity below - a dedicated, read-only service account.
+  # gated by the identity below - a dedicated, read-only service account. The
+  # method selectors and resources are the minimum for the blocked call; further
+  # violations (different methods/projects) will extend this list - re-run this
+  # script with each new violation id, or ask Rabbit for the full minimal set
+  # for every enabled feature.
 - ingressFrom:
     identities:
     - serviceAccount:$PRINCIPAL
@@ -82,14 +110,15 @@ for VID in "${IDS[@]}"; do
     operations:
     - serviceName: $SERVICE
       methodSelectors:
-      - method: '*'
+$(selectors "$SERVICE" "$PERMS")
     resources:
-    - '*'
+$(sed 's/^/    - /' <<<"$TARGETS")
 EOF
   fi
 
   if [[ "$N_EGRESS" -gt 0 ]]; then
     EG_TARGETS=$(jq -r '[.protoPayload.metadata.egressViolations[].targetResource] | unique | .[]' <<<"$ENTRY")
+    EG_PERMS=$(jq -r '[.protoPayload.metadata.egressViolations[].targetResourcePermissions[]?] | unique | .[]' <<<"$ENTRY")
     echo "  direction : EGRESS (to: $(tr '\n' ' ' <<<"$EG_TARGETS"))"
     cat <<EOF
 
@@ -103,7 +132,7 @@ EOF
     operations:
     - serviceName: $SERVICE
       methodSelectors:
-      - method: '*'
+$(selectors "$SERVICE" "$EG_PERMS")
     resources:
 $(sed 's/^/    - /' <<<"$EG_TARGETS")
 EOF

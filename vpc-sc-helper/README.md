@@ -82,6 +82,26 @@ Violation: Wkaesblvho8FaOZDZ_fws8Eivy...
   gcloud access-context-manager perimeters dry-run update data_perimeter ...
 ```
 
+## Minimal rules
+
+The printed rules are the **minimum for the specific blocked call**:
+
+- For `bigquery.googleapis.com` the method selectors are the exact IAM
+  permissions the denied call exercised (taken from the violation entry), not
+  `method: '*'`.
+- `bigqueryreservation.googleapis.com` supports no method-level selectors in
+  VPC-SC, so `'*'` is emitted there with a comment.
+- `resources` is scoped to the project(s) named in the violation, not `'*'`.
+- If the blocked call reads billing-export **rows** (`bigquery.tables.getData`),
+  the script warns you to keep that rule's resources scoped to the
+  billing-export project(s) only — Rabbit never needs row-level data access
+  anywhere else.
+
+Because each violation shows one call, later crawler stages may surface
+additional violations (different methods or projects); re-run the script with
+each new id to extend the rules incrementally, or ask Rabbit for the complete
+minimal rule set for the features you have enabled.
+
 ## Why the ingress rule uses "Any source"
 
 VPC-SC `resource:` sources match on the **originating VPC network** of a
