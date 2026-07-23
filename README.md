@@ -25,6 +25,9 @@ This repository aims to provide tools, scripts, and code snippets for current an
 - [vpc-sc-helper](vpc-sc-helper/):
   - A read-only bash helper for customers whose VPC Service Controls perimeters block Rabbit's data loading. Given the violation id(s) from Rabbit's error reports, it finds the denial in your audit logs, names the exact perimeter, and prints the minimal ingress/egress rule plus dry-run-first `gcloud` commands to apply it.
 
+- [followrabbit-cli](followrabbit-cli/):
+  - Comprehensive reference for the `followrabbit` CLI — install, auth, every command group (auth · status · costreview · context · recos · optimize · completion · version) plus a deep-dive on `optimize bq-compute-pricing-model scheduled-queries`, which sets the optimal pricing model on every BigQuery scheduled query in a project. Idempotent re-runs, dry-run by default, full revert support.
+
 # Coding Agent Plugins
 
 This repository includes plugins for **Claude Code**, **Cursor**, and **OpenAI Codex** that bring FollowRabbit cost optimization directly into your coding agent workflow. The plugins are thin documentation layers — skills teach the AI agent when and how to invoke the `followrabbit` CLI.
