@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
 
 import typer
@@ -11,7 +12,7 @@ from rich.console import Console
 
 from . import __version__, report, writers
 from .auth import resolve_auth
-from .categories import UNITS, build_numbers
+from .categories import UNITS, build_literals, build_numbers
 from .config import PricingConfig
 from .models import utc_now
 from .pricing import derive_fx_rate, resolve_pricing
@@ -27,6 +28,13 @@ console = Console()
 log = logging.getLogger(__name__)
 
 _ALL_UNITS = [unit.name for unit in UNITS]
+
+
+class StorageBillingModel(StrEnum):
+    """Billing model assumed for datasets with no explicit option set."""
+
+    LOGICAL = "LOGICAL"
+    PHYSICAL = "PHYSICAL"
 
 
 def _fail(message: str) -> None:
@@ -68,6 +76,11 @@ def run(
     currency: str = typer.Option("USD", "--currency", help="ISO 4217 currency code"),
     slot_hour_price: float | None = typer.Option(None, "--slot-hour-price"),
     ondemand_price: float | None = typer.Option(None, "--ondemand-price"),
+    default_storage_billing_model: StorageBillingModel | None = typer.Option(
+        None,
+        "--default-storage-billing-model",
+        help="Billing model assumed for datasets with no explicit option [default: LOGICAL]",
+    ),
     max_workers: int = typer.Option(8, "--max-workers", min=1, max=32),
     categories: list[str] = typer.Option(
         [], "--categories", help="Restrict to a subset of categories (repeatable)"
@@ -86,7 +99,13 @@ def run(
 
     locations = _validate_locations(location)
     units = _resolve_units(categories)
-    cli_overrides = {"slot_hour_price": slot_hour_price, "ondemand_price": ondemand_price}
+    cli_overrides: dict[str, float | str | None] = {
+        "slot_hour_price": slot_hour_price,
+        "ondemand_price": ondemand_price,
+        "default_storage_billing_model": (
+            default_storage_billing_model.value if default_storage_billing_model else None
+        ),
+    }
 
     auth_ctx = resolve_auth(quota_project)
     console.print(
@@ -131,6 +150,7 @@ def run(
 
     row_counts = writers.write_category_csvs(run_dir, results)
     writers.write_errors_csv(run_dir, errors)
+    writers.write_query_error_log(run_dir, errors)
     writers.write_rendered_sql(run_dir, results)
     writers.write_manifest(
         run_dir,
@@ -203,6 +223,7 @@ def _dry_run(
                 project_id=sample_project,
                 location=sample_location,
                 numbers=build_numbers(unit_name, lookback_days, pricing),
+                literals=build_literals(unit_name, pricing),
             )
             console.print(rendered)
         except SqlRenderError as exc:

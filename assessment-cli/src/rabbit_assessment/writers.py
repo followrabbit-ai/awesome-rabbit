@@ -96,6 +96,29 @@ def write_errors_csv(out_dir: Path, errors: list[CollectionError]) -> None:
     _write_rows(out_dir / "errors.csv", rows, _ERROR_COLUMNS)
 
 
+def write_query_error_log(out_dir: Path, errors: list[CollectionError]) -> None:
+    """Write the full, untruncated error text + failing SQL for every skip,
+    so a failure can be investigated after the run. errors.csv stays the
+    short index; this is the deep-dive companion."""
+    if not errors:
+        return
+    blocks: list[str] = []
+    for err in errors:
+        block = [
+            "=" * 78,
+            f"[{err.occurred_at}] {err.template}  "
+            f"project={err.project_id}  location={err.location}",
+            f"error_class: {err.error_class}",
+            "---- error ----",
+            err.detail or err.message,
+        ]
+        if err.rendered_sql:
+            block += ["---- rendered SQL ----", err.rendered_sql]
+        block.append("")
+        blocks.append("\n".join(block))
+    (out_dir / "query-errors.log").write_text("\n".join(blocks), encoding="utf-8")
+
+
 def write_rendered_sql(out_dir: Path, results: list[CollectionResult]) -> None:
     """Persist one rendered SQL sample per unit so customers can audit it."""
     sql_dir = out_dir / "rendered_sql"

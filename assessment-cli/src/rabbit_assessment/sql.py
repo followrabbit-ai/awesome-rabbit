@@ -66,14 +66,35 @@ def _format_number(key: str, value: object) -> str:
     return repr(float(value))
 
 
+# Allowlists for non-numeric literal substitutions. These values are inserted
+# into the SQL as text, so each must come from a fixed, validated set.
+_LITERAL_ALLOWLISTS: dict[str, frozenset[str]] = {
+    "default_storage_billing_model": frozenset({"LOGICAL", "PHYSICAL"}),
+}
+
+
+def _format_literal(key: str, value: object) -> str:
+    allowed = _LITERAL_ALLOWLISTS.get(key)
+    if allowed is None:
+        raise SqlRenderError(f"Unknown literal parameter {key!r}")
+    text = str(value).strip().upper()
+    if text not in allowed:
+        raise SqlRenderError(
+            f"Parameter {key!r} must be one of {sorted(allowed)}, got {value!r}"
+        )
+    return text
+
+
 def render(
     name: str,
     *,
     project_id: str,
     location: str,
     numbers: dict[str, float | int] | None = None,
+    literals: dict[str, str] | None = None,
 ) -> str:
-    """Render template `name`. Identifiers are validated; numbers are coerced.
+    """Render template `name`. Identifiers are validated, numbers are coerced,
+    and literal values are checked against a fixed allowlist.
 
     Raises SqlRenderError on any invalid input.
     """
@@ -81,8 +102,10 @@ def render(
         "project_id": validate_project_id(project_id),
         "region": normalize_location(location),
     }
-    for key, value in (numbers or {}).items():
-        substitutions[key] = _format_number(key, value)
+    for key, number in (numbers or {}).items():
+        substitutions[key] = _format_number(key, number)
+    for key, literal in (literals or {}).items():
+        substitutions[key] = _format_literal(key, literal)
 
     template = Template(load_template(name))
     try:
