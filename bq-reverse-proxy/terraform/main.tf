@@ -138,7 +138,10 @@ resource "google_cloud_run_v2_service" "proxy" {
       # non-null value. The proxy reads it at startup and uses it as the
       # fallback key for requests that omit `rabbit-api-key`.
       dynamic "env" {
-        for_each = var.default_api_key == null ? [] : [1]
+        # nonsensitive: comparisons against a sensitive var are themselves
+        # sensitive-marked, and dynamic for_each rejects sensitive values.
+        # Only the presence/absence is unmarked here, never the key itself.
+        for_each = nonsensitive(var.default_api_key == null) ? [] : [1]
         content {
           name  = "DEFAULT_API_KEY"
           value = var.default_api_key
@@ -149,7 +152,7 @@ resource "google_cloud_run_v2_service" "proxy" {
       # clients that cannot send the `rabbit-api-key` header. Rendered as
       # "alias1=key1,alias2=key2".
       dynamic "env" {
-        for_each = length(var.api_key_routes) == 0 ? [] : [1]
+        for_each = nonsensitive(length(var.api_key_routes) == 0) ? [] : [1]
         content {
           name  = "API_KEY_ROUTES"
           value = join(",", [for alias, key in var.api_key_routes : "${alias}=${key}"])
