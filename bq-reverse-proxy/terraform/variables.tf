@@ -161,7 +161,7 @@ because they send OAuth2 access tokens scoped to BigQuery, not ID tokens
 audience-bound to the proxy URL. The recommended secure setup is:
 
     allow_unauthenticated = true
-    ingress               = "INGRESS_TRAFFIC_INTERNAL"
+    ingress               = "INGRESS_TRAFFIC_INTERNAL_ONLY"
 
 so the URL is only reachable from the same VPC SC perimeter / Cloud Run
 instances in the same project — no public exposure, no IAM friction.
@@ -176,7 +176,7 @@ variable "ingress" {
   description = <<EOT
 Cloud Run ingress setting. One of:
   - INGRESS_TRAFFIC_ALL                              (default; reachable from public internet)
-  - INGRESS_TRAFFIC_INTERNAL                         (only same-project / VPC SC perimeter / connected Cloud Run)
+  - INGRESS_TRAFFIC_INTERNAL_ONLY                    (only same-project / VPC SC perimeter / connected Cloud Run)
   - INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER           (internal + Google Cloud Load Balancing only)
 
 Pair with allow_unauthenticated=true for the SDK-friendly secure setup.
@@ -186,10 +186,10 @@ EOT
   validation {
     condition = contains([
       "INGRESS_TRAFFIC_ALL",
-      "INGRESS_TRAFFIC_INTERNAL",
+      "INGRESS_TRAFFIC_INTERNAL_ONLY",
       "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER",
     ], var.ingress)
-    error_message = "ingress must be one of INGRESS_TRAFFIC_ALL | INGRESS_TRAFFIC_INTERNAL | INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
+    error_message = "ingress must be one of INGRESS_TRAFFIC_ALL | INGRESS_TRAFFIC_INTERNAL_ONLY | INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   }
 }
 

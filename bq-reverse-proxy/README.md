@@ -105,7 +105,7 @@ region          = "europe-west3"
 default_api_key = "your-rabbit-api-key"
 
 allow_unauthenticated = true
-ingress               = "INGRESS_TRAFFIC_ALL" # or INGRESS_TRAFFIC_INTERNAL, see below
+ingress               = "INGRESS_TRAFFIC_ALL" # or INGRESS_TRAFFIC_INTERNAL_ONLY, see below
 ```
 
 See [Choosing an Access Model](#choosing-an-access-model) and the [Configuration Reference](#configuration-reference) below.
@@ -142,7 +142,7 @@ Protect the endpoint at the network layer instead:
 
 | Model | Settings | When to use |
 | ----- | -------- | ----------- |
-| **Internal (recommended)** | `allow_unauthenticated = true`, `ingress = "INGRESS_TRAFFIC_INTERNAL"` | All clients run inside your GCP project / VPC / VPC-SC perimeter (Composer, in-VPC Airflow, dbt on GCE). The URL is unreachable from the internet. |
+| **Internal (recommended)** | `allow_unauthenticated = true`, `ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"` | All clients run inside your GCP project / VPC / VPC-SC perimeter (Composer, in-VPC Airflow, dbt on GCE). The URL is unreachable from the internet. |
 | **Internal + Load Balancer** | `allow_unauthenticated = true`, `ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"` | You want to front the proxy with your own Google Cloud Load Balancer (custom domain, Cloud Armor allowlists). |
 | **Public** | `allow_unauthenticated = true`, `ingress = "INGRESS_TRAFFIC_ALL"` | You use SaaS clients that connect from outside your network (Looker, dbt Cloud). |
 
@@ -614,7 +614,7 @@ If you deployed the previous `bq-proxy` package from this repository:
 | ------------------------------------ | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | Image pull fails on deploy           | Artifact Registry access   | The registry allows all authenticated GCP identities to pull. Make sure the Cloud Run service agent exists (deploy once) and the region prefix in `image_registry` is valid |
 | HTML `401` on every request          | Cloud Run IAM gate         | You set `allow_unauthenticated = false` with SDK clients. Use `allow_unauthenticated = true` + network-level protection (see [Choosing an Access Model](#choosing-an-access-model)) |
-| `404` / connection refused           | Ingress setting            | `INGRESS_TRAFFIC_INTERNAL` blocks traffic from outside your VPC — SaaS clients (Looker, dbt Cloud) need `INGRESS_TRAFFIC_ALL`             |
+| `404` / connection refused           | Ingress setting            | `INGRESS_TRAFFIC_INTERNAL_ONLY` blocks traffic from outside your VPC — SaaS clients (Looker, dbt Cloud) need `INGRESS_TRAFFIC_ALL`             |
 | Health check passes but queries fail | BigQuery API not enabled   | Enable `bigquery.googleapis.com` on your project                                                                                          |
 | Queries succeed but no optimization  | Missing or invalid API key | Verify `default_api_key` is set correctly and `bq_job_optimizer_url` was not overridden. Check logs: `gcloud run services logs read bq-reverse-proxy --region=REGION` |
 | High latency on first request        | Cold start                 | Increase `min_instances` to 1 or higher                                                                                                   |
