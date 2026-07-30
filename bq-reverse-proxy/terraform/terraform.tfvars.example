@@ -22,7 +22,7 @@ default_api_key = "your-rabbit-api-key"
 # (A) Internal only — clients run inside your VPC / project (recommended
 #     when possible, e.g. Airflow/Composer, in-VPC dbt):
 #       allow_unauthenticated = true
-#       ingress               = "INGRESS_TRAFFIC_INTERNAL"
+#       ingress               = "INGRESS_TRAFFIC_INTERNAL_ONLY"
 #
 # (B) Public endpoint — needed for SaaS clients (Looker, dbt Cloud):
 #       allow_unauthenticated = true
