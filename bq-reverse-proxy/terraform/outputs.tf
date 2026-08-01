@@ -18,6 +18,11 @@ output "image" {
   value       = local.resolved_image
 }
 
+output "api_keys_secret_id" {
+  description = "Secret Manager secret id holding the API keys (only when create_api_keys_secret = true). Add the keys with: gcloud secrets versions add <this> --data-file=- --project <project_id>"
+  value       = var.create_api_keys_secret ? google_secret_manager_secret.api_keys[0].secret_id : null
+}
+
 output "version" {
   description = "Version string baked into this module copy (useful for asserting the right pin was consumed)."
   value       = local.version
