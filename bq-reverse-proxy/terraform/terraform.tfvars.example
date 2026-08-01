@@ -5,29 +5,35 @@
 project_id = "my-gcp-project"
 region     = "europe-west3" # co-locate with your BigQuery datasets
 
-# Rabbit API key — create one yourself in the Rabbit UI at
+# Rabbit API keys — create them yourself in the Rabbit UI at
 # https://app.followrabbit.ai/api-keys (no need to contact Rabbit support).
-# Used for all requests that don't carry their own `rabbit-api-key` header
-# (i.e. all standard BigQuery tools). Without it the proxy runs in
-# pass-through mode.
+# One alias => key map; the reserved alias "default" is the fallback key for
+# requests without a `rabbit-api-key` header or path alias (i.e. all standard
+# BigQuery tools). Extra aliases route workloads via
+# https://<proxy-url>/<alias> — see "Using Multiple API Keys" in the README.
+# Without any key the proxy runs in pass-through mode.
 #
 # Pick ONE of the three delivery options below (they are mutually exclusive).
 # The Secret Manager options need secretmanager.googleapis.com enabled and
-# keep the key out of the Cloud Run revision spec / console — see
-# "Storing the API Key in Secret Manager" in the README.
+# proxy image >= v0.2.0, and keep the keys out of the Cloud Run revision
+# spec / console — see "Storing the API Keys in Secret Manager" in the README.
 
-# (1) Quick start: plain env var (key visible in the Cloud Run console).
-default_api_key = "your-rabbit-api-key"
+# (1) Quick start: plain env vars (keys visible in the Cloud Run console).
+api_keys = {
+  default = "your-rabbit-api-key"
+  # dbt    = "your-rabbit-api-key-for-dbt"
+}
 
-# (2) Recommended: module-created Secret Manager secret. Add the key as a
+# (2) Recommended: module-created Secret Manager secret. Add the keys as a
 #     secret version out-of-band after the secret exists:
-#       printf '%s' 'KEY' | gcloud secrets versions add \
-#         bq-reverse-proxy-default-api-key --data-file=- --project my-gcp-project
-# create_default_api_key_secret = true
+#       printf '%s' 'default=KEY0,dbt=KEY1' | gcloud secrets versions add \
+#         bq-reverse-proxy-api-keys --data-file=- --project my-gcp-project
+# create_api_keys_secret = true
 
-# (3) Bring your own secret (grant the runtime SA secretAccessor yourself).
-# default_api_key_secret         = "projects/other-proj/secrets/my-rabbit-key"
-# default_api_key_secret_version = "latest"
+# (3) Bring your own secret in the same "default=key0,alias1=key1" format
+#     (grant the runtime SA secretAccessor yourself).
+# api_keys_secret         = "projects/other-proj/secrets/my-rabbit-keys"
+# api_keys_secret_version = "latest"
 
 # -----------------------------------------------------------------------
 # Access model — pick one

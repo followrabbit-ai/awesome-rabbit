@@ -57,7 +57,7 @@ Before deploying, ensure you have:
     --project YOUR_PROJECT
   ```
 
-  If you store the Rabbit API key in Secret Manager (recommended — see [Storing the API Key in Secret Manager](#storing-the-api-key-in-secret-manager)), also enable `secretmanager.googleapis.com`.
+  If you store the Rabbit API key in Secret Manager (recommended — see [Storing the API Keys in Secret Manager](#storing-the-api-keys-in-secret-manager)), also enable `secretmanager.googleapis.com`.
 2. **Terraform** >= 1.6 installed locally ([install guide](https://developer.hashicorp.com/terraform/install))
 3. **gcloud CLI** authenticated with a principal that has permissions to create Cloud Run services, service accounts, and IAM bindings. You need **two** logins:
   - `gcloud auth login` — for gcloud CLI commands
@@ -88,7 +88,7 @@ module "bq_reverse_proxy" {
 
   project_id      = "my-gcp-project"
   region          = "europe-west3"
-  default_api_key = var.rabbit_api_key
+  api_keys = { default = var.rabbit_api_key }
 }
 ```
 
@@ -104,13 +104,13 @@ Edit `terraform.tfvars` with your values:
 ```hcl
 project_id      = "my-gcp-project"
 region          = "europe-west3"
-default_api_key = "your-rabbit-api-key"
+api_keys = { default = "your-rabbit-api-key" }
 
 allow_unauthenticated = true
 ingress               = "INGRESS_TRAFFIC_ALL" # or INGRESS_TRAFFIC_INTERNAL_ONLY, see below
 ```
 
-See [Choosing an Access Model](#choosing-an-access-model) and the [Configuration Reference](#configuration-reference) below. `default_api_key` as a plain variable is the quickest start, but it ends up as a plain-text env var on the service — for production, use the Secret Manager-backed setup instead (see [Storing the API Key in Secret Manager](#storing-the-api-key-in-secret-manager)).
+See [Choosing an Access Model](#choosing-an-access-model) and the [Configuration Reference](#configuration-reference) below. `api_keys` as a plain variable is the quickest start, but it ends up as a plain-text env var on the service — for production, use the Secret Manager-backed setup instead (see [Storing the API Keys in Secret Manager](#storing-the-api-keys-in-secret-manager)).
 
 ### Step 2: Initialize and Deploy
 
@@ -135,62 +135,58 @@ curl https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app/readyz
 
 > Use `/readyz` for external health checks. (`/healthz` also exists but is used by Cloud Run's liveness probe and may be intercepted by the platform.) The proxy also exposes Prometheus metrics on `/metrics`.
 
-## Storing the API Key in Secret Manager
+## Storing the API Keys in Secret Manager
 
-Setting `default_api_key` (or `api_key_routes`) injects the key(s) as a plain-text env var: it is stored in the Cloud Run revision spec and visible in the console to anyone with `run.services.get`. The module supports sourcing both `DEFAULT_API_KEY` and `API_KEY_ROUTES` from Secret Manager instead — Cloud Run then resolves the secret at instance startup, and the console/revision spec only ever show the secret *reference* (e.g. `bq-reverse-proxy-default-api-key:latest`), never the key. Reading the value requires `secretmanager.versions.access` on the secret, which is separately granted and audited.
+Setting `api_keys` injects the keys as plain-text env vars: they are stored in the Cloud Run revision spec and visible in the console to anyone with `run.services.get`. The module supports sourcing the whole key map from a **single** Secret Manager secret instead — Cloud Run then resolves it at instance startup, and the console/revision spec only ever show the secret *reference* (e.g. `bq-reverse-proxy-api-keys:latest`), never the keys. Reading the value requires `secretmanager.versions.access` on the secret, which is separately granted and audited.
 
-Everything below is written for the default API key; the multi-key routing variable works identically — same two options, same IAM, same rollout semantics — with this mapping:
+The secret value is the exact string `api_keys` renders to — `alias=key` pairs, comma-separated, with the reserved alias `default` carrying the fallback key:
 
-| | Default key | Path-alias routes |
-|---|---|---|
-| Plain variable | `default_api_key` | `api_key_routes` |
-| Module-managed secret | `create_default_api_key_secret` | `create_api_key_routes_secret` |
-| Existing secret | `default_api_key_secret` (+`_version`) | `api_key_routes_secret` (+`_version`) |
-| Created secret name | `<service_name>-default-api-key` | `<service_name>-api-key-routes` |
-| Secret value | the API key itself | the rendered mapping: `alias1=key1,alias2=key2` |
+```
+default=rabbit-key-root,dbt=rabbit-key-dbt,looker=rabbit-key-looker
+```
 
-For the routes secret, the value is the exact string the plain variable would render to, e.g. `printf '%s' 'dbt=rabbit-key-1,looker=rabbit-key-2' | gcloud secrets versions add bq-reverse-proxy-api-key-routes --data-file=- --project YOUR_PROJECT`. Alias rules (single path segment, no reserved segments — see [Using Multiple API Keys](#using-multiple-api-keys-with-one-deployment)) still apply; with the secret path they are enforced by the proxy at startup rather than by Terraform.
+A single-key deployment's secret is just `default=rabbit-key-root`. Alias rules (single path segment, no reserved segments — see [Using Multiple API Keys](#using-multiple-api-keys-with-one-deployment)) still apply; with the secret path they are enforced by the proxy at startup rather than by Terraform.
 
-Prerequisite for both options: `secretmanager.googleapis.com` enabled in the project (see [Prerequisites](#prerequisites)).
+Prerequisites: `secretmanager.googleapis.com` enabled in the project (see [Prerequisites](#prerequisites)), and proxy image **v0.2.0 or newer** (the first release that understands the `default` alias — older images would treat it as a routable path and start without a fallback key).
 
 ### Option A: Module-managed secret
 
 ```hcl
-# instead of default_api_key = "..."
-create_default_api_key_secret = true
+# instead of api_keys = { ... }
+create_api_keys_secret = true
 ```
 
-The module creates a secret named `<service_name>-default-api-key` and grants the proxy's runtime service account `roles/secretmanager.secretAccessor` on it. The secret is created **empty** — the API key itself never passes through Terraform, so it appears in neither the Terraform state nor the revision spec. You add it as a secret version out-of-band, and the Cloud Run rollout only succeeds once a version exists, so deploy in two steps:
+The module creates a secret named `<service_name>-api-keys` and grants the proxy's runtime service account `roles/secretmanager.secretAccessor` on it. The secret is created **empty** — the keys never pass through Terraform, so they appear in neither the Terraform state nor the revision spec. You add them as a secret version out-of-band, and the Cloud Run rollout only succeeds once a version exists, so deploy in two steps:
 
 ```bash
 # 1. Create the secret first (prefix the address with module.<name>. if you
 #    consume this as a module):
-terraform apply -target='google_secret_manager_secret.default_api_key'
+terraform apply -target='google_secret_manager_secret.api_keys'
 
-# 2. Add the API key as a secret version:
-printf '%s' 'YOUR_RABBIT_API_KEY' | gcloud secrets versions add \
-  bq-reverse-proxy-default-api-key --data-file=- --project YOUR_PROJECT
+# 2. Add the keys as a secret version:
+printf '%s' 'default=YOUR_RABBIT_API_KEY' | gcloud secrets versions add \
+  bq-reverse-proxy-api-keys --data-file=- --project YOUR_PROJECT
 
 # 3. Deploy everything else:
 terraform apply
 ```
 
-To rotate the key later, add a new version with the same `gcloud secrets versions add` command. With the default `default_api_key_secret_version = "latest"` the new version takes effect on the next revision rollout (any `terraform apply` that touches the service, or `gcloud run services update <service> --region <region>`); running instances keep the value they resolved at startup.
+To rotate keys later, add a new version with the same `gcloud secrets versions add` command (the full mapping each time — versions are immutable snapshots). With the default `api_keys_secret_version = "latest"` the new version takes effect on the next revision rollout (any `terraform apply` that touches the service, or `gcloud run services update <service> --region <region>`); running instances keep the value they resolved at startup.
 
 ### Option B: Bring your own secret
 
-If the key already lives in a secret you manage elsewhere (possibly in another project):
+If the keys already live in a secret you manage elsewhere (possibly in another project), in the same `default=key0,alias1=key1` format:
 
 ```hcl
-default_api_key_secret         = "my-rabbit-api-key"                    # short id: secret in project_id
-# default_api_key_secret       = "projects/other-proj/secrets/my-key"   # full name: secret in another project
-default_api_key_secret_version = "latest"                               # or pin a version, e.g. "3"
+api_keys_secret         = "my-rabbit-api-keys"                   # short id: secret in project_id
+# api_keys_secret       = "projects/other-proj/secrets/my-keys"  # full name: secret in another project
+api_keys_secret_version = "latest"                               # or pin a version, e.g. "3"
 ```
 
 The module does not manage IAM on secrets it doesn't own — grant the proxy's runtime service account access yourself:
 
 ```bash
-gcloud secrets add-iam-policy-binding my-rabbit-api-key \
+gcloud secrets add-iam-policy-binding my-rabbit-api-keys \
   --member "serviceAccount:bq-reverse-proxy-sa@YOUR_PROJECT.iam.gserviceaccount.com" \
   --role roles/secretmanager.secretAccessor \
   --project PROJECT_OF_THE_SECRET
@@ -203,7 +199,7 @@ gcloud secrets add-iam-policy-binding my-rabbit-api-key \
 - **Option A** additionally requires permission to create secrets and set IAM policy on them — `roles/secretmanager.admin` on the project covers both.
 - **Option B** requires no Secret Manager permission for the Terraform principal at all: the module only writes the secret *reference* into the service config and never reads the secret. Only the runtime service account needs `secretAccessor`, granted by the secret's owner as shown above.
 
-Within each trio (`default_api_key` / `create_default_api_key_secret` / `default_api_key_secret`, and likewise `api_key_routes` / `create_api_key_routes_secret` / `api_key_routes_secret`) the options are mutually exclusive — Terraform fails the plan if more than one is set. The default key and the routes are independent of each other, and each can use either delivery method.
+`api_keys`, `create_api_keys_secret`, `api_keys_secret`, and the deprecated `default_api_key`/`api_key_routes` pair are mutually exclusive ways to configure the keys — Terraform fails the plan if more than one is set.
 
 ## Choosing an Access Model
 
@@ -222,7 +218,7 @@ For the **public** model, note what exposure actually means: the proxy is statel
 
 ## Using Multiple API Keys with One Deployment
 
-Optimization behavior (pricing mode, reservations, enabled optimizations) is configured on the Rabbit side **per API key**. If all your traffic should use the same settings, one `default_api_key` is all you need — skip this section.
+Optimization behavior (pricing mode, reservations, enabled optimizations) is configured on the Rabbit side **per API key**. If all your traffic should use the same settings, `api_keys = { default = "..." }` is all you need — skip this section.
 
 To give different workloads different settings (e.g. dbt production on a reservation, Looker dashboards on-demand), create one API key per workload in the [Rabbit UI](https://app.followrabbit.ai/api-keys) and route each workload to its key. The proxy resolves the key for each request in this order:
 
@@ -230,13 +226,14 @@ To give different workloads different settings (e.g. dbt production on a reserva
 2. **Path alias** — the mechanism for everything else. Configure aliases in Terraform:
 
    ```hcl
-   api_key_routes = {
-     dbt    = "rabbit-key-for-dbt"
-     looker = "rabbit-key-for-looker"
+   api_keys = {
+     default = "rabbit-key-fallback"
+     dbt     = "rabbit-key-for-dbt"
+     looker  = "rabbit-key-for-looker"
    }
    ```
 
-   This puts the keys in a plain-text env var; to keep them out of the Cloud Run console, source the mapping from Secret Manager instead via `create_api_key_routes_secret` or `api_key_routes_secret` — see [Storing the API Key in Secret Manager](#storing-the-api-key-in-secret-manager).
+   This puts the keys in a plain-text env var; to keep them out of the Cloud Run console, source the mapping from Secret Manager instead via `create_api_keys_secret` or `api_keys_secret` — see [Storing the API Keys in Secret Manager](#storing-the-api-keys-in-secret-manager).
 
    Then point each workload's BigQuery endpoint at `https://<proxy-url>/<alias>`:
 
@@ -246,7 +243,7 @@ To give different workloads different settings (e.g. dbt production on a reserva
    ```
 
    Every client appends the standard `/bigquery/v2/...` path to the endpoint it is given, so requests arrive as `/<alias>/bigquery/v2/...`; the proxy strips the alias, uses that alias's API key, and forwards the canonical path to BigQuery. The API key itself never appears in URLs or request logs — only the alias does.
-3. **`default_api_key`** — fallback for requests that match neither.
+3. **The `default` key** (`api_keys` entry `default`) — fallback for requests that match neither.
 
 Aliases are single path segments of your choosing (they cannot be `bigquery`, `upload`, `batch`, `discovery`, `healthz`, `readyz`, or `metrics`). Adding, removing, or rotating a routed key is a `terraform apply` (in-place revision, no downtime). Requests with an unknown first path segment are forwarded to BigQuery unchanged, which returns a normal 404.
 
@@ -254,7 +251,7 @@ All client integration guides below work identically with an alias URL — where
 
 ### Client Capability Summary
 
-How each supported client points at the proxy, and which options it has for supplying a dedicated API key. Every client can always fall back to `default_api_key` (no key configuration on the client at all). The `rabbit-api-key` header is always optional — where it is supported it is simply an alternative to a path alias.
+How each supported client points at the proxy, and which options it has for supplying a dedicated API key. Every client can always fall back to the `default` key (no key configuration on the client at all). The `rabbit-api-key` header is always optional — where it is supported it is simply an alternative to a path alias.
 
 | Client | Endpoint configuration | `rabbit-api-key` header | Path alias |
 |---|---|---|---|
@@ -273,13 +270,13 @@ How each supported client points at the proxy, and which options it has for supp
 | `bq` CLI | `--api` flag | ❌ | ✅ |
 | JDBC (Simba driver) | connection URL / `rootUrl` property | ❌ | ✅ |
 
-Only custom code using the Java or Go SDK can send the header; every standard tool relies on a path alias for a dedicated key, or on `default_api_key`.
+Only custom code using the Java or Go SDK can send the header; every standard tool relies on a path alias for a dedicated key, or on the `default` key.
 
 ## Connecting Your Clients to the Proxy
 
 Once deployed, configure your BigQuery clients to send requests to the proxy URL instead of the default `bigquery.googleapis.com` endpoint. Below are integration guides for common tools.
 
-> **Multiple workloads?** Each example below uses the bare proxy URL, which resolves to `default_api_key`. To route a client to a specific API key, use `https://<proxy-url>/<alias>` instead — see [Using Multiple API Keys with One Deployment](#using-multiple-api-keys-with-one-deployment).
+> **Multiple workloads?** Each example below uses the bare proxy URL, which resolves to the `default` key. To route a client to a specific API key, use `https://<proxy-url>/<alias>` instead — see [Using Multiple API Keys with One Deployment](#using-multiple-api-keys-with-one-deployment).
 
 ### Python (google-cloud-bigquery)
 
@@ -584,14 +581,12 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `project_id` | **Yes** | — | GCP project ID for deployment |
 | `region` | **Yes** | — | GCP region for the Cloud Run service |
 | `bq_job_optimizer_url` | No | `https://api.followrabbit.ai/bq-job-optimizer` | Rabbit BQ Job Optimizer URL. The default is the global public endpoint — right for everyone. `""` = pass-through mode |
-| `default_api_key` | No | `null` | Rabbit API key used for requests without a `rabbit-api-key` header or path alias, as a plain env var. Prefer the Secret Manager variants below (see [Storing the API Key in Secret Manager](#storing-the-api-key-in-secret-manager)) |
-| `create_default_api_key_secret` | No | `false` | Create a Secret Manager secret for the default API key and inject it as a secret-backed env var; you add the key as a secret version out-of-band |
-| `default_api_key_secret` | No | `null` | Existing Secret Manager secret to source the default API key from (short id, or `projects/*/secrets/*` for cross-project) |
-| `default_api_key_secret_version` | No | `latest` | Secret version to pin when using either Secret Manager variant |
-| `api_key_routes` | No | `{}` | Map of URL path alias → Rabbit API key for multi-workload routing, as a plain env var (see [Using Multiple API Keys](#using-multiple-api-keys-with-one-deployment)) |
-| `create_api_key_routes_secret` | No | `false` | Create a Secret Manager secret for the alias → key mapping; you add the mapping (`alias1=key1,alias2=key2`) as a secret version out-of-band |
-| `api_key_routes_secret` | No | `null` | Existing Secret Manager secret holding the alias → key mapping (short id, or `projects/*/secrets/*` for cross-project) |
-| `api_key_routes_secret_version` | No | `latest` | Secret version to pin for the routes secret |
+| `api_keys` | No | `{}` | Alias → Rabbit API key map as a plain env var; the reserved alias `default` is the fallback key (see [Using Multiple API Keys](#using-multiple-api-keys-with-one-deployment)). Prefer the Secret Manager variants below (see [Storing the API Keys in Secret Manager](#storing-the-api-keys-in-secret-manager)) |
+| `create_api_keys_secret` | No | `false` | Create a Secret Manager secret for the whole key map; you add the keys (`default=key0,alias1=key1`) as a secret version out-of-band. Needs image ≥ v0.2.0 |
+| `api_keys_secret` | No | `null` | Existing Secret Manager secret holding the key map (short id, or `projects/*/secrets/*` for cross-project). Needs image ≥ v0.2.0 |
+| `api_keys_secret_version` | No | `latest` | Secret version to pin when the keys come from Secret Manager |
+| `default_api_key` | No | `null` | **Deprecated** — use `api_keys = { default = "..." }`. Still works |
+| `api_key_routes` | No | `{}` | **Deprecated** — use `api_keys` with non-`default` aliases. Still works |
 | `image_registry` | No | `europe-docker.pkg.dev/.../bq-reverse-proxy` | Registry path without tag (see [Container Images](#container-images)) |
 | `image_tag` | No | `latest` | Image version to deploy. Set a release tag (e.g. `v0.1.0`) to pin |
 | `allow_unauthenticated` | No | `false` | Grant `run.invoker` to `allUsers` (see [Choosing an Access Model](#choosing-an-access-model)) |
@@ -625,8 +620,8 @@ These are the environment variables the proxy container reads. The Terraform con
 | `BQ_API_TARGET_URL` | `https://bigquery.googleapis.com` | `bq_api_target_url` | Upstream BigQuery API URL |
 | `BQ_JOB_OPTIMIZER_URL` | _(empty = pass-through)_ | `bq_job_optimizer_url` | Rabbit optimizer base URL. The Terraform default is `https://api.followrabbit.ai/bq-job-optimizer` |
 | `BQ_JOB_OPTIMIZER_TIMEOUT` | `2s` | `bq_job_optimizer_timeout` | Optimizer call timeout |
-| `DEFAULT_API_KEY` | _(unset)_ | `default_api_key` | Fallback Rabbit API key |
-| `API_KEY_ROUTES` | _(unset)_ | `api_key_routes` | Path alias → key map, `alias1=key1,alias2=key2` |
+| `DEFAULT_API_KEY` | _(unset)_ | `api_keys` entry `default` | Fallback Rabbit API key |
+| `API_KEY_ROUTES` | _(unset)_ | `api_keys` (non-`default` aliases) | Path alias → key map, `alias1=key1,alias2=key2` |
 | `REQUEST_TIMEOUT` | `10m` | `request_timeout` | Upstream request timeout |
 | `MAX_BODY_BYTES` | `1048576` | `max_body_bytes` | Max buffered body size |
 | `LOG_LEVEL` | `info` | `log_level` | Log verbosity |
@@ -683,7 +678,7 @@ The tool runs four scenario categories — small queries (latency overhead), med
 If you deployed the previous `bq-proxy` package from this repository:
 
 1. Deploy the new proxy alongside the old one (this package uses the service name `bq-reverse-proxy`, so no conflicts).
-2. Note the config changes: `rabbit_api_key` → `default_api_key`, `rabbit_api_base_url` → `bq_job_optimizer_url` (defaults to the global public endpoint — normally nothing to set), and `default_pricing_mode` / `reservation_ids` are gone (managed server-side by Rabbit).
+2. Note the config changes: `rabbit_api_key` → `api_keys` entry `default`, `rabbit_api_base_url` → `bq_job_optimizer_url` (defaults to the global public endpoint — normally nothing to set), and `default_pricing_mode` / `reservation_ids` are gone (managed server-side by Rabbit).
 3. Switch your clients' endpoint to the new proxy URL.
 4. `terraform destroy` the old deployment.
 
@@ -696,7 +691,7 @@ If you deployed the previous `bq-proxy` package from this repository:
 | HTML `401` on every request          | Cloud Run IAM gate         | You set `allow_unauthenticated = false` with SDK clients. Use `allow_unauthenticated = true` + network-level protection (see [Choosing an Access Model](#choosing-an-access-model)) |
 | `404` / connection refused           | Ingress setting            | `INGRESS_TRAFFIC_INTERNAL_ONLY` blocks traffic from outside your VPC — SaaS clients (Looker, dbt Cloud) need `INGRESS_TRAFFIC_ALL`             |
 | Health check passes but queries fail | BigQuery API not enabled   | Enable `bigquery.googleapis.com` on your project                                                                                          |
-| Queries succeed but no optimization  | Missing or invalid API key | Verify `default_api_key` is set correctly and `bq_job_optimizer_url` was not overridden. Check logs: `gcloud run services logs read bq-reverse-proxy --region=REGION` |
+| Queries succeed but no optimization  | Missing or invalid API key | Verify the `default` API key is set correctly and `bq_job_optimizer_url` was not overridden. Check logs: `gcloud run services logs read bq-reverse-proxy --region=REGION` |
 | High latency on first request        | Cold start                 | Increase `min_instances` to 1 or higher                                                                                                   |
 
 

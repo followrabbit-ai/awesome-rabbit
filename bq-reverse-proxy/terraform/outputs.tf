@@ -18,14 +18,9 @@ output "image" {
   value       = local.resolved_image
 }
 
-output "default_api_key_secret_id" {
-  description = "Secret Manager secret id holding the default API key (only when create_default_api_key_secret = true). Add the key with: gcloud secrets versions add <this> --data-file=- --project <project_id>"
-  value       = var.create_default_api_key_secret ? google_secret_manager_secret.default_api_key[0].secret_id : null
-}
-
-output "api_key_routes_secret_id" {
-  description = "Secret Manager secret id holding the API key routes mapping (only when create_api_key_routes_secret = true). Add the mapping with: gcloud secrets versions add <this> --data-file=- --project <project_id>"
-  value       = var.create_api_key_routes_secret ? google_secret_manager_secret.api_key_routes[0].secret_id : null
+output "api_keys_secret_id" {
+  description = "Secret Manager secret id holding the API keys (only when create_api_keys_secret = true). Add the keys with: gcloud secrets versions add <this> --data-file=- --project <project_id>"
+  value       = var.create_api_keys_secret ? google_secret_manager_secret.api_keys[0].secret_id : null
 }
 
 output "version" {

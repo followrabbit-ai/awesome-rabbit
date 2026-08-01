@@ -26,11 +26,15 @@ locals {
     "version"    = replace(local.version, ".", "-")
   }, var.labels)
 
-  # Secret Manager sources for DEFAULT_API_KEY / API_KEY_ROUTES: the
-  # module-created secret's id, a caller-supplied secret reference, or
-  # null (plain env / disabled).
-  api_key_secret        = var.create_default_api_key_secret ? google_secret_manager_secret.default_api_key[0].secret_id : var.default_api_key_secret
-  api_key_routes_secret = var.create_api_key_routes_secret ? google_secret_manager_secret.api_key_routes[0].secret_id : var.api_key_routes_secret
+  # Plain-text key sources: the unified api_keys map ("default" alias =
+  # fallback key) or the deprecated default_api_key / api_key_routes pair.
+  # Split in Terraform so plain mode works with any proxy image version.
+  plain_default_key = var.default_api_key != null ? var.default_api_key : lookup(var.api_keys, "default", null)
+  plain_routes      = length(var.api_key_routes) > 0 ? var.api_key_routes : { for alias, key in var.api_keys : alias => key if alias != "default" }
+
+  # Secret Manager source for the whole key map: the module-created
+  # secret's id, a caller-supplied secret reference, or null (plain env).
+  api_keys_secret = var.create_api_keys_secret ? google_secret_manager_secret.api_keys[0].secret_id : var.api_keys_secret
 
   base_env = {
     # PORT is reserved by Cloud Run v2 — it is automatically set to match
@@ -57,13 +61,13 @@ resource "google_service_account" "proxy" {
 }
 
 # -----------------------------------------------------------------------
-# Secret Manager secrets for the API keys (optional)
+# Secret Manager secret for the API keys (optional)
 # -----------------------------------------------------------------------
 
-resource "google_secret_manager_secret" "default_api_key" {
-  count     = var.create_default_api_key_secret ? 1 : 0
+resource "google_secret_manager_secret" "api_keys" {
+  count     = var.create_api_keys_secret ? 1 : 0
   project   = var.project_id
-  secret_id = "${var.service_name}-default-api-key"
+  secret_id = "${var.service_name}-api-keys"
   labels    = local.base_labels
 
   replication {
@@ -71,29 +75,10 @@ resource "google_secret_manager_secret" "default_api_key" {
   }
 }
 
-resource "google_secret_manager_secret_iam_member" "default_api_key_accessor" {
-  count     = var.create_default_api_key_secret ? 1 : 0
+resource "google_secret_manager_secret_iam_member" "api_keys_accessor" {
+  count     = var.create_api_keys_secret ? 1 : 0
   project   = var.project_id
-  secret_id = google_secret_manager_secret.default_api_key[0].secret_id
-  role      = "roles/secretmanager.secretAccessor"
-  member    = local.effective_sa_member
-}
-
-resource "google_secret_manager_secret" "api_key_routes" {
-  count     = var.create_api_key_routes_secret ? 1 : 0
-  project   = var.project_id
-  secret_id = "${var.service_name}-api-key-routes"
-  labels    = local.base_labels
-
-  replication {
-    auto {}
-  }
-}
-
-resource "google_secret_manager_secret_iam_member" "api_key_routes_accessor" {
-  count     = var.create_api_key_routes_secret ? 1 : 0
-  project   = var.project_id
-  secret_id = google_secret_manager_secret.api_key_routes[0].secret_id
+  secret_id = google_secret_manager_secret.api_keys[0].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = local.effective_sa_member
 }
@@ -182,60 +167,44 @@ resource "google_cloud_run_v2_service" "proxy" {
         }
       }
 
-      # Optional: DEFAULT_API_KEY is only set when the caller supplies a
-      # non-null value. The proxy reads it at startup and uses it as the
-      # fallback key for requests that omit `rabbit-api-key`.
+      # Optional: fallback API key as a plain env var (from api_keys'
+      # "default" alias or the deprecated default_api_key variable).
       dynamic "env" {
-        # nonsensitive: comparisons against a sensitive var are themselves
+        # nonsensitive: comparisons against a sensitive value are themselves
         # sensitive-marked, and dynamic for_each rejects sensitive values.
         # Only the presence/absence is unmarked here, never the key itself.
-        for_each = nonsensitive(var.default_api_key == null) ? [] : [1]
+        for_each = nonsensitive(local.plain_default_key == null) ? [] : [1]
         content {
           name  = "DEFAULT_API_KEY"
-          value = var.default_api_key
+          value = local.plain_default_key
         }
       }
 
-      # Optional: DEFAULT_API_KEY sourced from Secret Manager instead of a
-      # plain value. Cloud Run resolves the secret at instance startup; the
-      # key never appears in the revision spec.
+      # Optional: path-alias route keys as a plain env var, rendered as
+      # "alias1=key1,alias2=key2".
       dynamic "env" {
-        for_each = local.api_key_secret == null ? [] : [1]
+        for_each = nonsensitive(length(local.plain_routes) == 0) ? [] : [1]
         content {
-          name = "DEFAULT_API_KEY"
-          value_source {
-            secret_key_ref {
-              secret  = local.api_key_secret
-              version = var.default_api_key_secret_version
-            }
-          }
+          name  = "API_KEY_ROUTES"
+          value = join(",", [for alias, key in local.plain_routes : "${alias}=${key}"])
         }
       }
 
-      # Optional: API_KEY_ROUTES sourced from Secret Manager. The secret
-      # value uses the same "alias1=key1,alias2=key2" format the plain
-      # variable renders to.
+      # Optional: the whole key map sourced from Secret Manager. The secret
+      # value uses the same format api_keys renders to, with the "default"
+      # alias carrying the fallback key ("default=key0,dbt=key1" — needs
+      # proxy image >= v0.2.0). Cloud Run resolves the secret at instance
+      # startup; keys never appear in the revision spec.
       dynamic "env" {
-        for_each = local.api_key_routes_secret == null ? [] : [1]
+        for_each = local.api_keys_secret == null ? [] : [1]
         content {
           name = "API_KEY_ROUTES"
           value_source {
             secret_key_ref {
-              secret  = local.api_key_routes_secret
-              version = var.api_key_routes_secret_version
+              secret  = local.api_keys_secret
+              version = var.api_keys_secret_version
             }
           }
-        }
-      }
-
-      # Optional: API_KEY_ROUTES maps URL path aliases to API keys for
-      # clients that cannot send the `rabbit-api-key` header. Rendered as
-      # "alias1=key1,alias2=key2".
-      dynamic "env" {
-        for_each = nonsensitive(length(var.api_key_routes) == 0) ? [] : [1]
-        content {
-          name  = "API_KEY_ROUTES"
-          value = join(",", [for alias, key in var.api_key_routes : "${alias}=${key}"])
         }
       }
     }
@@ -248,30 +217,19 @@ resource "google_cloud_run_v2_service" "proxy" {
     percent = 100
   }
 
-  # The revision resolves the secrets at startup — make sure the accessor
-  # grants exist before the rollout, not in parallel with it.
-  depends_on = [
-    google_secret_manager_secret_iam_member.default_api_key_accessor,
-    google_secret_manager_secret_iam_member.api_key_routes_accessor,
-  ]
+  # The revision resolves the secret at startup — make sure the accessor
+  # grant exists before the rollout, not in parallel with it.
+  depends_on = [google_secret_manager_secret_iam_member.api_keys_accessor]
 
   lifecycle {
     precondition {
       condition = length([for set in [
-        nonsensitive(var.default_api_key != null),
-        var.create_default_api_key_secret,
-        var.default_api_key_secret != null,
+        nonsensitive(length(var.api_keys) > 0),
+        var.create_api_keys_secret,
+        var.api_keys_secret != null,
+        nonsensitive(var.default_api_key != null || length(var.api_key_routes) > 0),
       ] : set if set]) <= 1
-      error_message = "Set at most one of default_api_key, create_default_api_key_secret, and default_api_key_secret — they are mutually exclusive sources for DEFAULT_API_KEY."
-    }
-
-    precondition {
-      condition = length([for set in [
-        nonsensitive(length(var.api_key_routes) > 0),
-        var.create_api_key_routes_secret,
-        var.api_key_routes_secret != null,
-      ] : set if set]) <= 1
-      error_message = "Set at most one of api_key_routes, create_api_key_routes_secret, and api_key_routes_secret — they are mutually exclusive sources for API_KEY_ROUTES."
+      error_message = "Configure the API keys through exactly one mechanism: api_keys, create_api_keys_secret, api_keys_secret, or the deprecated default_api_key/api_key_routes pair."
     }
   }
 }

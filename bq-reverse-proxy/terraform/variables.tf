@@ -59,127 +59,117 @@ EOT
 }
 
 # -----------------------------------------------------------------------
-# API key — fallback only
+# API keys
 # -----------------------------------------------------------------------
+
+variable "api_keys" {
+  type        = map(string)
+  sensitive   = true
+  description = <<EOT
+Rabbit API keys as one alias => key map. The reserved alias "default" is
+the fallback key used when a request carries no `rabbit-api-key` header
+and matches no path alias — for a single-key deployment that's the only
+entry you need:
+
+  api_keys = { default = var.rabbit_api_key }
+
+Every other alias routes a workload: clients point their BigQuery endpoint
+at `https://<proxy-url>/<alias>` and the proxy resolves that alias's key.
+
+  api_keys = {
+    default = var.rabbit_api_key
+    dbt     = var.rabbit_api_key_dbt
+    looker  = var.rabbit_api_key_looker
+  }
+
+Aliases must be single path segments and must not collide with reserved
+segments (bigquery, upload, batch, discovery, healthz, readyz, metrics).
+Key resolution order in the proxy: `rabbit-api-key` header, then path
+alias, then the "default" key.
+
+The keys are injected as plain-text env vars, visible in the Cloud Run
+revision spec to anyone with run.services.get. Prefer the Secret Manager
+path instead: `create_api_keys_secret = true` (module-managed secret) or
+`api_keys_secret` (bring your own). Mutually exclusive with both.
+EOT
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for alias, _ in var.api_keys :
+      can(regex("^[^/]+$", alias)) && !contains(["bigquery", "upload", "batch", "discovery", "healthz", "readyz", "metrics"], alias)
+    ])
+    error_message = "Aliases must be single path segments and must not be a reserved segment (bigquery, upload, batch, discovery, healthz, readyz, metrics)."
+  }
+}
+
+variable "create_api_keys_secret" {
+  type        = bool
+  description = <<EOT
+Create a Secret Manager secret named "<service_name>-api-keys" and inject
+the keys from it (env-var-from-secret — keys never appear in the revision
+spec or console). The module grants the runtime service account
+roles/secretmanager.secretAccessor on it. The secret is created EMPTY: add
+the keys as a secret version out-of-band (see the README for the gcloud
+command) in the same alias=key format `api_keys` renders to, e.g.
+"default=key0,dbt=key1" — the first Cloud Run rollout only succeeds once a
+version exists. Requires proxy image >= v0.2.0 (support for the "default"
+alias). Mutually exclusive with `api_keys` and `api_keys_secret`.
+EOT
+  default     = false
+}
+
+variable "api_keys_secret" {
+  type        = string
+  description = <<EOT
+Existing Secret Manager secret holding the alias => key mapping in
+"default=key0,alias1=key1" format (see `api_keys` for alias semantics),
+injected via env-var-from-secret. Use the short secret id for a secret in
+`project_id`, or the full "projects/<p>/secrets/<name>" resource name for
+a secret in another project. The module does NOT manage IAM on secrets it
+doesn't own — grant the runtime service account
+roles/secretmanager.secretAccessor on the secret yourself (see README).
+Requires proxy image >= v0.2.0. Mutually exclusive with `api_keys` and
+`create_api_keys_secret`.
+EOT
+  default     = null
+}
+
+variable "api_keys_secret_version" {
+  type        = string
+  description = "Secret version to pin when the keys come from Secret Manager. Note: with \"latest\", new versions only take effect on the next revision rollout, not on running instances."
+  default     = "latest"
+}
 
 variable "default_api_key" {
   type        = string
   sensitive   = true
   description = <<EOT
-Default Rabbit API key used when a client request does not carry the
-`rabbit-api-key` header. Leave null to disable — unauthenticated clients
-will then bypass the optimizer entirely.
-
-The key is injected as a plain-text env var, visible in the Cloud Run
-revision spec to anyone with run.services.get. Prefer the Secret Manager
-path instead: set `create_default_api_key_secret = true` (module-managed
-secret) or `default_api_key_secret` (bring your own). Mutually exclusive
-with both.
+DEPRECATED: use `api_keys = { default = "..." }` (or its Secret Manager
+variants) instead. Kept for backward compatibility; still works, but new
+configuration options land on `api_keys` only. Mutually exclusive with
+`api_keys` and the secret variants.
 EOT
   default     = null
-}
-
-variable "create_default_api_key_secret" {
-  type        = bool
-  description = <<EOT
-Create a Secret Manager secret named "<service_name>-default-api-key" and
-inject DEFAULT_API_KEY from it (env-var-from-secret — the key never appears
-in the revision spec or console). The module grants the runtime service
-account roles/secretmanager.secretAccessor on it. The secret is created
-EMPTY: add the API key as a secret version out-of-band (see the README for
-the gcloud command) — the first Cloud Run rollout only succeeds once a
-version exists. Mutually exclusive with `default_api_key` and
-`default_api_key_secret`.
-EOT
-  default     = false
-}
-
-variable "default_api_key_secret" {
-  type        = string
-  description = <<EOT
-Existing Secret Manager secret holding the default Rabbit API key, injected
-as DEFAULT_API_KEY via env-var-from-secret. Use the short secret id for a
-secret in `project_id`, or the full "projects/<p>/secrets/<name>" resource
-name for a secret in another project. The module does NOT manage IAM on
-secrets it doesn't own — grant the runtime service account
-roles/secretmanager.secretAccessor on the secret yourself (see README).
-Mutually exclusive with `default_api_key` and
-`create_default_api_key_secret`.
-EOT
-  default     = null
-}
-
-variable "default_api_key_secret_version" {
-  type        = string
-  description = "Secret version to pin DEFAULT_API_KEY to when using a Secret Manager secret. Note: with \"latest\", new versions only take effect on the next revision rollout, not on running instances."
-  default     = "latest"
-}
-
-variable "create_api_key_routes_secret" {
-  type        = bool
-  description = <<EOT
-Create a Secret Manager secret named "<service_name>-api-key-routes" and
-inject API_KEY_ROUTES from it. Works exactly like
-`create_default_api_key_secret`: the secret is created EMPTY and you add
-the mapping as a secret version out-of-band, in the same rendered format
-the plain variable produces: "alias1=key1,alias2=key2" (see README).
-Mutually exclusive with `api_key_routes` and `api_key_routes_secret`.
-EOT
-  default     = false
-}
-
-variable "api_key_routes_secret" {
-  type        = string
-  description = <<EOT
-Existing Secret Manager secret holding the path-alias => API key mapping
-in "alias1=key1,alias2=key2" format, injected as API_KEY_ROUTES. Short
-secret id for a secret in `project_id`, or full "projects/<p>/secrets/<name>"
-for another project. Grant the runtime service account
-roles/secretmanager.secretAccessor on it yourself (see README).
-Mutually exclusive with `api_key_routes` and `create_api_key_routes_secret`.
-EOT
-  default     = null
-}
-
-variable "api_key_routes_secret_version" {
-  type        = string
-  description = "Secret version to pin API_KEY_ROUTES to when using a Secret Manager secret. Same rollout semantics as default_api_key_secret_version."
-  default     = "latest"
 }
 
 variable "api_key_routes" {
   type        = map(string)
   sensitive   = true
   description = <<EOT
-Map of URL path alias => Rabbit API key, for running multiple workloads
-(each with its own API key and optimization settings) through one proxy
-deployment. Clients that cannot send the `rabbit-api-key` header point
-their BigQuery endpoint at `https://<proxy-url>/<alias>` and the proxy
-resolves the key from the alias. Example:
-
-  api_key_routes = {
-    dbt    = var.rabbit_api_key_dbt
-    looker = var.rabbit_api_key_looker
-  }
-
-Aliases must be single path segments and must not collide with reserved
-segments (bigquery, upload, batch, discovery, healthz, readyz, metrics).
-Key resolution order in the proxy: `rabbit-api-key` header, then path
-alias, then `default_api_key`.
-
-The keys are injected as a plain-text env var, visible in the Cloud Run
-revision spec. Prefer the Secret Manager path instead: set
-`create_api_key_routes_secret = true` or `api_key_routes_secret`.
-Mutually exclusive with both.
+DEPRECATED: use `api_keys` (non-"default" aliases) or its Secret Manager
+variants instead. Kept for backward compatibility; still works, but new
+configuration options land on `api_keys` only. Mutually exclusive with
+`api_keys` and the secret variants.
 EOT
   default     = {}
 
   validation {
     condition = alltrue([
       for alias, _ in var.api_key_routes :
-      can(regex("^[^/]+$", alias)) && !contains(["bigquery", "upload", "batch", "discovery", "healthz", "readyz", "metrics"], alias)
+      can(regex("^[^/]+$", alias)) && !contains(["default", "bigquery", "upload", "batch", "discovery", "healthz", "readyz", "metrics"], alias)
     ])
-    error_message = "Aliases must be single path segments and must not be a reserved segment (bigquery, upload, batch, discovery, healthz, readyz, metrics)."
+    error_message = "Aliases must be single path segments and must not be a reserved segment (default, bigquery, upload, batch, discovery, healthz, readyz, metrics)."
   }
 }
 
