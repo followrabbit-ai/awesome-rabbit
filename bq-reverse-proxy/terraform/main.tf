@@ -36,15 +36,9 @@ locals {
   # secret's id, a caller-supplied secret reference, or null (plain env).
   api_keys_secret = var.create_api_keys_secret ? google_secret_manager_secret.api_keys[0].secret_id : var.api_keys_secret
 
-  # Per-alias optimizer configs rendered to the camelCase JSON the proxy
-  # forwards verbatim (null fields dropped so absent means "derive").
-  optimizer_configs_env = length(var.optimizer_configs) == 0 ? null : jsonencode({
-    for alias, c in var.optimizer_configs : alias => merge(
-      c.reservation_ids == null ? {} : { reservationIds = c.reservation_ids },
-      c.default_pricing_mode_override == null ? {} : { defaultPricingModeOverride = c.default_pricing_mode_override },
-      c.statement_level_override == null ? {} : { statementLevelOverride = c.statement_level_override },
-    )
-  })
+  # Per-alias optimizer configs, passed through verbatim — the map values
+  # already use the optimizer's camelCase field names.
+  optimizer_configs_env = length(var.optimizer_configs) == 0 ? null : jsonencode(var.optimizer_configs)
 
   base_env = {
     # PORT is reserved by Cloud Run v2 — it is automatically set to match

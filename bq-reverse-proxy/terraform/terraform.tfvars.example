@@ -38,9 +38,11 @@ api_keys = {
 # Optional: per-workload optimizer config, keyed by api_keys alias
 # ("default" = root traffic). Overrides the server-side per-key settings —
 # see "Per-Workload Optimizer Configuration" in the README.
+# Values are verbatim optimizer JSON (camelCase). Pricing mode is always
+# derived per job project and cannot be set here.
 # optimizer_configs = {
-#   default = { default_pricing_mode_override = "on_demand" }
-#   dbt     = { reservation_ids = ["my-project:EU.my-reservation"] }
+#   default = { statementLevelOverride = true }
+#   dbt     = { reservationIds = ["my-project:EU.my-reservation"] }
 # }
 
 # -----------------------------------------------------------------------

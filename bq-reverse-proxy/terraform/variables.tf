@@ -142,43 +142,55 @@ variable "api_keys_secret_version" {
 }
 
 variable "optimizer_configs" {
-  type = map(object({
-    reservation_ids               = optional(list(string))
-    default_pricing_mode_override = optional(string)
-    statement_level_override      = optional(bool)
-  }))
+  # `any` rather than map(object): values are passed through as JSON
+  # verbatim, and map(any) would force every alias's config to have the
+  # same shape.
+  type        = any
   description = <<EOT
 Per-workload BQ Job Optimizer config, keyed by the same aliases as
 `api_keys` (the reserved alias "default" covers root traffic and any alias
 without its own entry). Overrides the server-side per-key configuration for
 requests going through this deployment — fully self-service, no Rabbit UI
-involvement. Example:
+involvement.
+
+Each value is passed to the optimizer as JSON verbatim, so field names use
+the optimizer's camelCase contract and new optimizer capabilities need no
+module update. Currently accepted fields: `reservationIds` (list),
+`statementLevelOverride` (bool). The pricing mode is derived per job
+project by the optimizer and cannot be set from this direction. Example:
 
   optimizer_configs = {
-    default = { default_pricing_mode_override = "on_demand" }
-    dbt     = { reservation_ids = ["my-project:EU.my-reservation"] }
+    default = { statementLevelOverride = true }
+    dbt     = { reservationIds = ["my-project:EU.my-reservation"] }
   }
 
-The config is not secret (reservation names + mode flags); it is rendered
-as a plain env var and logged by both the proxy and the optimizer for
-per-request attribution. Requires proxy image >= v0.2.0.
+Field-level validation happens in the optimizer: an invalid config is
+rejected per request (logged on both sides, queries fail open — never
+blocked). The config is not secret; it is rendered as a plain env var and
+logged by both the proxy and the optimizer for per-request attribution.
+Requires proxy image >= v0.2.0.
 EOT
   default     = {}
 
   validation {
-    condition = alltrue([
+    condition     = can(keys(var.optimizer_configs)) && try(alltrue([for _, c in var.optimizer_configs : can(keys(c))]), false) || try(length(var.optimizer_configs) == 0, false)
+    error_message = "optimizer_configs must be a map of alias => config object."
+  }
+
+  validation {
+    condition = try(alltrue([
       for alias, _ in var.optimizer_configs :
       can(regex("^[^/]+$", alias)) && !contains(["bigquery", "upload", "batch", "discovery", "healthz", "readyz", "metrics"], alias)
-    ])
+    ]), true)
     error_message = "Aliases must be single path segments and must not be a reserved segment (bigquery, upload, batch, discovery, healthz, readyz, metrics)."
   }
 
   validation {
-    condition = alltrue([
+    condition = try(alltrue([
       for _, c in var.optimizer_configs :
-      c.default_pricing_mode_override == null || contains(["on_demand", "slot_based"], coalesce(c.default_pricing_mode_override, "on_demand"))
-    ])
-    error_message = "default_pricing_mode_override must be \"on_demand\" or \"slot_based\"."
+      !contains(keys(c), "defaultPricingModeOverride")
+    ]), true)
+    error_message = "defaultPricingModeOverride cannot be set per proxy route — the optimizer derives the pricing mode per job project."
   }
 }
 

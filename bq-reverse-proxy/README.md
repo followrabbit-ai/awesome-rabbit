@@ -207,15 +207,12 @@ Optimization behavior (pricing mode, reservations, statement-level routing) is n
 
 ```hcl
 optimizer_configs = {
-  default = { default_pricing_mode_override = "on_demand" }
-  dbt     = {
-    reservation_ids          = ["my-project:EU.my-reservation"]
-    statement_level_override = true
-  }
+  default = { statementLevelOverride = true }
+  dbt     = { reservationIds = ["my-project:EU.my-reservation"] }
 }
 ```
 
-Fields (all optional — absent means "derived by the optimizer"): `reservation_ids` (list of `project:location.name` or full reservation resource names), `default_pricing_mode_override` (`on_demand` | `slot_based`), `statement_level_override` (bool).
+Each config object is passed to the optimizer as JSON **verbatim** (camelCase field names, the optimizer's contract), so new optimizer capabilities work without a module update. Currently accepted fields, all optional — absent means "derived by the optimizer": `reservationIds` (list of `project:location.name` or full reservation resource names) and `statementLevelOverride` (bool). The pricing mode is always derived per job project by the optimizer; `defaultPricingModeOverride` is rejected at plan time (and by the optimizer) from this path. Other field-level validation happens per request in the optimizer: an invalid config is logged on both sides and the query fails open (runs unoptimized, never blocked).
 
 How it works: the proxy forwards the matching alias's config with each job submission (the `x-rabbit-optimizer-config` header), where it takes precedence over the API key's server-side configuration. The config is not secret and is deliberately visible: it appears as a plain env var on the service, in the proxy's startup log, and on every optimizer request log line (`configSource: header`) — so "why did this query route on-demand?" is always answerable from the logs. Requires proxy image **v0.2.0 or newer**; against older Rabbit optimizer deployments the header is ignored and the server-side config applies.
 
