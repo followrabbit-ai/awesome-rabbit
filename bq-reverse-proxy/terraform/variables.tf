@@ -115,6 +115,38 @@ variable "default_api_key_secret_version" {
   default     = "latest"
 }
 
+variable "create_api_key_routes_secret" {
+  type        = bool
+  description = <<EOT
+Create a Secret Manager secret named "<service_name>-api-key-routes" and
+inject API_KEY_ROUTES from it. Works exactly like
+`create_default_api_key_secret`: the secret is created EMPTY and you add
+the mapping as a secret version out-of-band, in the same rendered format
+the plain variable produces: "alias1=key1,alias2=key2" (see README).
+Mutually exclusive with `api_key_routes` and `api_key_routes_secret`.
+EOT
+  default     = false
+}
+
+variable "api_key_routes_secret" {
+  type        = string
+  description = <<EOT
+Existing Secret Manager secret holding the path-alias => API key mapping
+in "alias1=key1,alias2=key2" format, injected as API_KEY_ROUTES. Short
+secret id for a secret in `project_id`, or full "projects/<p>/secrets/<name>"
+for another project. Grant the runtime service account
+roles/secretmanager.secretAccessor on it yourself (see README).
+Mutually exclusive with `api_key_routes` and `create_api_key_routes_secret`.
+EOT
+  default     = null
+}
+
+variable "api_key_routes_secret_version" {
+  type        = string
+  description = "Secret version to pin API_KEY_ROUTES to when using a Secret Manager secret. Same rollout semantics as default_api_key_secret_version."
+  default     = "latest"
+}
+
 variable "api_key_routes" {
   type        = map(string)
   sensitive   = true
@@ -134,6 +166,11 @@ Aliases must be single path segments and must not collide with reserved
 segments (bigquery, upload, batch, discovery, healthz, readyz, metrics).
 Key resolution order in the proxy: `rabbit-api-key` header, then path
 alias, then `default_api_key`.
+
+The keys are injected as a plain-text env var, visible in the Cloud Run
+revision spec. Prefer the Secret Manager path instead: set
+`create_api_key_routes_secret = true` or `api_key_routes_secret`.
+Mutually exclusive with both.
 EOT
   default     = {}
 

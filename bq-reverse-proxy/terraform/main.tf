@@ -26,9 +26,11 @@ locals {
     "version"    = replace(local.version, ".", "-")
   }, var.labels)
 
-  # Secret Manager source for DEFAULT_API_KEY: the module-created secret's
-  # id, a caller-supplied secret reference, or null (plain env / disabled).
-  api_key_secret = var.create_default_api_key_secret ? google_secret_manager_secret.default_api_key[0].secret_id : var.default_api_key_secret
+  # Secret Manager sources for DEFAULT_API_KEY / API_KEY_ROUTES: the
+  # module-created secret's id, a caller-supplied secret reference, or
+  # null (plain env / disabled).
+  api_key_secret        = var.create_default_api_key_secret ? google_secret_manager_secret.default_api_key[0].secret_id : var.default_api_key_secret
+  api_key_routes_secret = var.create_api_key_routes_secret ? google_secret_manager_secret.api_key_routes[0].secret_id : var.api_key_routes_secret
 
   base_env = {
     # PORT is reserved by Cloud Run v2 — it is automatically set to match
@@ -55,7 +57,7 @@ resource "google_service_account" "proxy" {
 }
 
 # -----------------------------------------------------------------------
-# Secret Manager secret for the default API key (optional)
+# Secret Manager secrets for the API keys (optional)
 # -----------------------------------------------------------------------
 
 resource "google_secret_manager_secret" "default_api_key" {
@@ -73,6 +75,25 @@ resource "google_secret_manager_secret_iam_member" "default_api_key_accessor" {
   count     = var.create_default_api_key_secret ? 1 : 0
   project   = var.project_id
   secret_id = google_secret_manager_secret.default_api_key[0].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = local.effective_sa_member
+}
+
+resource "google_secret_manager_secret" "api_key_routes" {
+  count     = var.create_api_key_routes_secret ? 1 : 0
+  project   = var.project_id
+  secret_id = "${var.service_name}-api-key-routes"
+  labels    = local.base_labels
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "api_key_routes_accessor" {
+  count     = var.create_api_key_routes_secret ? 1 : 0
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.api_key_routes[0].secret_id
   role      = "roles/secretmanager.secretAccessor"
   member    = local.effective_sa_member
 }
@@ -191,6 +212,22 @@ resource "google_cloud_run_v2_service" "proxy" {
         }
       }
 
+      # Optional: API_KEY_ROUTES sourced from Secret Manager. The secret
+      # value uses the same "alias1=key1,alias2=key2" format the plain
+      # variable renders to.
+      dynamic "env" {
+        for_each = local.api_key_routes_secret == null ? [] : [1]
+        content {
+          name = "API_KEY_ROUTES"
+          value_source {
+            secret_key_ref {
+              secret  = local.api_key_routes_secret
+              version = var.api_key_routes_secret_version
+            }
+          }
+        }
+      }
+
       # Optional: API_KEY_ROUTES maps URL path aliases to API keys for
       # clients that cannot send the `rabbit-api-key` header. Rendered as
       # "alias1=key1,alias2=key2".
@@ -211,9 +248,12 @@ resource "google_cloud_run_v2_service" "proxy" {
     percent = 100
   }
 
-  # The revision resolves the secret at startup — make sure the accessor
-  # grant exists before the rollout, not in parallel with it.
-  depends_on = [google_secret_manager_secret_iam_member.default_api_key_accessor]
+  # The revision resolves the secrets at startup — make sure the accessor
+  # grants exist before the rollout, not in parallel with it.
+  depends_on = [
+    google_secret_manager_secret_iam_member.default_api_key_accessor,
+    google_secret_manager_secret_iam_member.api_key_routes_accessor,
+  ]
 
   lifecycle {
     precondition {
@@ -223,6 +263,15 @@ resource "google_cloud_run_v2_service" "proxy" {
         var.default_api_key_secret != null,
       ] : set if set]) <= 1
       error_message = "Set at most one of default_api_key, create_default_api_key_secret, and default_api_key_secret — they are mutually exclusive sources for DEFAULT_API_KEY."
+    }
+
+    precondition {
+      condition = length([for set in [
+        nonsensitive(length(var.api_key_routes) > 0),
+        var.create_api_key_routes_secret,
+        var.api_key_routes_secret != null,
+      ] : set if set]) <= 1
+      error_message = "Set at most one of api_key_routes, create_api_key_routes_secret, and api_key_routes_secret — they are mutually exclusive sources for API_KEY_ROUTES."
     }
   }
 }

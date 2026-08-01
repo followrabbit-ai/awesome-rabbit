@@ -137,7 +137,19 @@ curl https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app/readyz
 
 ## Storing the API Key in Secret Manager
 
-Setting `default_api_key` injects the key as a plain-text env var: it is stored in the Cloud Run revision spec and visible in the console to anyone with `run.services.get`. The module supports sourcing `DEFAULT_API_KEY` from Secret Manager instead — Cloud Run then resolves the secret at instance startup, and the console/revision spec only ever show the secret *reference* (e.g. `bq-reverse-proxy-default-api-key:latest`), never the key. Reading the value requires `secretmanager.versions.access` on the secret, which is separately granted and audited.
+Setting `default_api_key` (or `api_key_routes`) injects the key(s) as a plain-text env var: it is stored in the Cloud Run revision spec and visible in the console to anyone with `run.services.get`. The module supports sourcing both `DEFAULT_API_KEY` and `API_KEY_ROUTES` from Secret Manager instead — Cloud Run then resolves the secret at instance startup, and the console/revision spec only ever show the secret *reference* (e.g. `bq-reverse-proxy-default-api-key:latest`), never the key. Reading the value requires `secretmanager.versions.access` on the secret, which is separately granted and audited.
+
+Everything below is written for the default API key; the multi-key routing variable works identically — same two options, same IAM, same rollout semantics — with this mapping:
+
+| | Default key | Path-alias routes |
+|---|---|---|
+| Plain variable | `default_api_key` | `api_key_routes` |
+| Module-managed secret | `create_default_api_key_secret` | `create_api_key_routes_secret` |
+| Existing secret | `default_api_key_secret` (+`_version`) | `api_key_routes_secret` (+`_version`) |
+| Created secret name | `<service_name>-default-api-key` | `<service_name>-api-key-routes` |
+| Secret value | the API key itself | the rendered mapping: `alias1=key1,alias2=key2` |
+
+For the routes secret, the value is the exact string the plain variable would render to, e.g. `printf '%s' 'dbt=rabbit-key-1,looker=rabbit-key-2' | gcloud secrets versions add bq-reverse-proxy-api-key-routes --data-file=- --project YOUR_PROJECT`. Alias rules (single path segment, no reserved segments — see [Using Multiple API Keys](#using-multiple-api-keys-with-one-deployment)) still apply; with the secret path they are enforced by the proxy at startup rather than by Terraform.
 
 Prerequisite for both options: `secretmanager.googleapis.com` enabled in the project (see [Prerequisites](#prerequisites)).
 
@@ -191,7 +203,7 @@ gcloud secrets add-iam-policy-binding my-rabbit-api-key \
 - **Option A** additionally requires permission to create secrets and set IAM policy on them — `roles/secretmanager.admin` on the project covers both.
 - **Option B** requires no Secret Manager permission for the Terraform principal at all: the module only writes the secret *reference* into the service config and never reads the secret. Only the runtime service account needs `secretAccessor`, granted by the secret's owner as shown above.
 
-`default_api_key`, `create_default_api_key_secret`, and `default_api_key_secret` are mutually exclusive — Terraform fails the plan if more than one is set.
+Within each trio (`default_api_key` / `create_default_api_key_secret` / `default_api_key_secret`, and likewise `api_key_routes` / `create_api_key_routes_secret` / `api_key_routes_secret`) the options are mutually exclusive — Terraform fails the plan if more than one is set. The default key and the routes are independent of each other, and each can use either delivery method.
 
 ## Choosing an Access Model
 
@@ -223,6 +235,8 @@ To give different workloads different settings (e.g. dbt production on a reserva
      looker = "rabbit-key-for-looker"
    }
    ```
+
+   This puts the keys in a plain-text env var; to keep them out of the Cloud Run console, source the mapping from Secret Manager instead via `create_api_key_routes_secret` or `api_key_routes_secret` — see [Storing the API Key in Secret Manager](#storing-the-api-key-in-secret-manager).
 
    Then point each workload's BigQuery endpoint at `https://<proxy-url>/<alias>`:
 
@@ -574,7 +588,10 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `create_default_api_key_secret` | No | `false` | Create a Secret Manager secret for the default API key and inject it as a secret-backed env var; you add the key as a secret version out-of-band |
 | `default_api_key_secret` | No | `null` | Existing Secret Manager secret to source the default API key from (short id, or `projects/*/secrets/*` for cross-project) |
 | `default_api_key_secret_version` | No | `latest` | Secret version to pin when using either Secret Manager variant |
-| `api_key_routes` | No | `{}` | Map of URL path alias → Rabbit API key for multi-workload routing (see [Using Multiple API Keys](#using-multiple-api-keys-with-one-deployment)) |
+| `api_key_routes` | No | `{}` | Map of URL path alias → Rabbit API key for multi-workload routing, as a plain env var (see [Using Multiple API Keys](#using-multiple-api-keys-with-one-deployment)) |
+| `create_api_key_routes_secret` | No | `false` | Create a Secret Manager secret for the alias → key mapping; you add the mapping (`alias1=key1,alias2=key2`) as a secret version out-of-band |
+| `api_key_routes_secret` | No | `null` | Existing Secret Manager secret holding the alias → key mapping (short id, or `projects/*/secrets/*` for cross-project) |
+| `api_key_routes_secret_version` | No | `latest` | Secret version to pin for the routes secret |
 | `image_registry` | No | `europe-docker.pkg.dev/.../bq-reverse-proxy` | Registry path without tag (see [Container Images](#container-images)) |
 | `image_tag` | No | `latest` | Image version to deploy. Set a release tag (e.g. `v0.1.0`) to pin |
 | `allow_unauthenticated` | No | `false` | Grant `run.invoker` to `allUsers` (see [Choosing an Access Model](#choosing-an-access-model)) |
