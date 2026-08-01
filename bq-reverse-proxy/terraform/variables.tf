@@ -141,6 +141,47 @@ variable "api_keys_secret_version" {
   default     = "latest"
 }
 
+variable "optimizer_configs" {
+  type = map(object({
+    reservation_ids               = optional(list(string))
+    default_pricing_mode_override = optional(string)
+    statement_level_override      = optional(bool)
+  }))
+  description = <<EOT
+Per-workload BQ Job Optimizer config, keyed by the same aliases as
+`api_keys` (the reserved alias "default" covers root traffic and any alias
+without its own entry). Overrides the server-side per-key configuration for
+requests going through this deployment — fully self-service, no Rabbit UI
+involvement. Example:
+
+  optimizer_configs = {
+    default = { default_pricing_mode_override = "on_demand" }
+    dbt     = { reservation_ids = ["my-project:EU.my-reservation"] }
+  }
+
+The config is not secret (reservation names + mode flags); it is rendered
+as a plain env var and logged by both the proxy and the optimizer for
+per-request attribution. Requires proxy image >= v0.2.0.
+EOT
+  default     = {}
+
+  validation {
+    condition = alltrue([
+      for alias, _ in var.optimizer_configs :
+      can(regex("^[^/]+$", alias)) && !contains(["bigquery", "upload", "batch", "discovery", "healthz", "readyz", "metrics"], alias)
+    ])
+    error_message = "Aliases must be single path segments and must not be a reserved segment (bigquery, upload, batch, discovery, healthz, readyz, metrics)."
+  }
+
+  validation {
+    condition = alltrue([
+      for _, c in var.optimizer_configs :
+      c.default_pricing_mode_override == null || contains(["on_demand", "slot_based"], coalesce(c.default_pricing_mode_override, "on_demand"))
+    ])
+    error_message = "default_pricing_mode_override must be \"on_demand\" or \"slot_based\"."
+  }
+}
+
 variable "default_api_key" {
   type        = string
   sensitive   = true

@@ -201,6 +201,24 @@ gcloud secrets add-iam-policy-binding my-rabbit-api-keys \
 
 `api_keys`, `create_api_keys_secret`, `api_keys_secret`, and the deprecated `default_api_key`/`api_key_routes` pair are mutually exclusive ways to configure the keys — Terraform fails the plan if more than one is set.
 
+## Per-Workload Optimizer Configuration
+
+Optimization behavior (pricing mode, reservations, statement-level routing) is normally configured on the Rabbit side per API key. `optimizer_configs` overrides it from your own deployment — self-service, no Rabbit UI involvement — keyed by the same aliases as `api_keys`, with `default` covering root traffic and any alias without its own entry:
+
+```hcl
+optimizer_configs = {
+  default = { default_pricing_mode_override = "on_demand" }
+  dbt     = {
+    reservation_ids          = ["my-project:EU.my-reservation"]
+    statement_level_override = true
+  }
+}
+```
+
+Fields (all optional — absent means "derived by the optimizer"): `reservation_ids` (list of `project:location.name` or full reservation resource names), `default_pricing_mode_override` (`on_demand` | `slot_based`), `statement_level_override` (bool).
+
+How it works: the proxy forwards the matching alias's config with each job submission (the `x-rabbit-optimizer-config` header), where it takes precedence over the API key's server-side configuration. The config is not secret and is deliberately visible: it appears as a plain env var on the service, in the proxy's startup log, and on every optimizer request log line (`configSource: header`) — so "why did this query route on-demand?" is always answerable from the logs. Requires proxy image **v0.2.0 or newer**; against older Rabbit optimizer deployments the header is ignored and the server-side config applies.
+
 ## Choosing an Access Model
 
 The proxy forwards your clients' BigQuery OAuth tokens as-is, so a request without a valid BigQuery credential can never read your data. However, the standard BigQuery client SDKs send OAuth access tokens scoped to BigQuery — **not** ID tokens audience-bound to the proxy URL — so they **cannot pass a Cloud Run IAM invoker gate**. Setting `allow_unauthenticated = false` for SDK/tool traffic results in HTML `401` responses from Cloud Run before requests ever reach the proxy.
@@ -585,6 +603,7 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `create_api_keys_secret` | No | `false` | Create a Secret Manager secret for the whole key map; you add the keys (`default=key0,alias1=key1`) as a secret version out-of-band. Needs image ≥ v0.2.0 |
 | `api_keys_secret` | No | `null` | Existing Secret Manager secret holding the key map (short id, or `projects/*/secrets/*` for cross-project). Needs image ≥ v0.2.0 |
 | `api_keys_secret_version` | No | `latest` | Secret version to pin when the keys come from Secret Manager |
+| `optimizer_configs` | No | `{}` | Per-workload optimizer config keyed by `api_keys` alias (see [Per-Workload Optimizer Configuration](#per-workload-optimizer-configuration)) |
 | `default_api_key` | No | `null` | **Deprecated** — use `api_keys = { default = "..." }`. Still works |
 | `api_key_routes` | No | `{}` | **Deprecated** — use `api_keys` with non-`default` aliases. Still works |
 | `image_registry` | No | `europe-docker.pkg.dev/.../bq-reverse-proxy` | Registry path without tag (see [Container Images](#container-images)) |

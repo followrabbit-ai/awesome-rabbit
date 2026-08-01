@@ -36,6 +36,16 @@ locals {
   # secret's id, a caller-supplied secret reference, or null (plain env).
   api_keys_secret = var.create_api_keys_secret ? google_secret_manager_secret.api_keys[0].secret_id : var.api_keys_secret
 
+  # Per-alias optimizer configs rendered to the camelCase JSON the proxy
+  # forwards verbatim (null fields dropped so absent means "derive").
+  optimizer_configs_env = length(var.optimizer_configs) == 0 ? null : jsonencode({
+    for alias, c in var.optimizer_configs : alias => merge(
+      c.reservation_ids == null ? {} : { reservationIds = c.reservation_ids },
+      c.default_pricing_mode_override == null ? {} : { defaultPricingModeOverride = c.default_pricing_mode_override },
+      c.statement_level_override == null ? {} : { statementLevelOverride = c.statement_level_override },
+    )
+  })
+
   base_env = {
     # PORT is reserved by Cloud Run v2 — it is automatically set to match
     # the container port and cannot be overridden here.
@@ -187,6 +197,16 @@ resource "google_cloud_run_v2_service" "proxy" {
         content {
           name  = "API_KEY_ROUTES"
           value = join(",", [for alias, key in local.plain_routes : "${alias}=${key}"])
+        }
+      }
+
+      # Optional: per-workload optimizer configs. Plain env — the config is
+      # not sensitive and both proxy and optimizer log it for attribution.
+      dynamic "env" {
+        for_each = local.optimizer_configs_env == null ? [] : [1]
+        content {
+          name  = "OPTIMIZER_CONFIGS"
+          value = local.optimizer_configs_env
         }
       }
 
