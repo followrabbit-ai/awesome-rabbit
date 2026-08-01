@@ -70,11 +70,49 @@ Default Rabbit API key used when a client request does not carry the
 `rabbit-api-key` header. Leave null to disable — unauthenticated clients
 will then bypass the optimizer entirely.
 
-The caller is responsible for sourcing the secret (e.g. via a
-google_secret_manager_secret_version data source in the root module) and
-passing the plain string here. This module does not manage Secret Manager.
+The key is injected as a plain-text env var, visible in the Cloud Run
+revision spec to anyone with run.services.get. Prefer the Secret Manager
+path instead: set `create_default_api_key_secret = true` (module-managed
+secret) or `default_api_key_secret` (bring your own). Mutually exclusive
+with both.
 EOT
   default     = null
+}
+
+variable "create_default_api_key_secret" {
+  type        = bool
+  description = <<EOT
+Create a Secret Manager secret named "<service_name>-default-api-key" and
+inject DEFAULT_API_KEY from it (env-var-from-secret — the key never appears
+in the revision spec or console). The module grants the runtime service
+account roles/secretmanager.secretAccessor on it. The secret is created
+EMPTY: add the API key as a secret version out-of-band (see the README for
+the gcloud command) — the first Cloud Run rollout only succeeds once a
+version exists. Mutually exclusive with `default_api_key` and
+`default_api_key_secret`.
+EOT
+  default     = false
+}
+
+variable "default_api_key_secret" {
+  type        = string
+  description = <<EOT
+Existing Secret Manager secret holding the default Rabbit API key, injected
+as DEFAULT_API_KEY via env-var-from-secret. Use the short secret id for a
+secret in `project_id`, or the full "projects/<p>/secrets/<name>" resource
+name for a secret in another project. The module does NOT manage IAM on
+secrets it doesn't own — grant the runtime service account
+roles/secretmanager.secretAccessor on the secret yourself (see README).
+Mutually exclusive with `default_api_key` and
+`create_default_api_key_secret`.
+EOT
+  default     = null
+}
+
+variable "default_api_key_secret_version" {
+  type        = string
+  description = "Secret version to pin DEFAULT_API_KEY to when using a Secret Manager secret. Note: with \"latest\", new versions only take effect on the next revision rollout, not on running instances."
+  default     = "latest"
 }
 
 variable "api_key_routes" {

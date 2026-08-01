@@ -18,6 +18,11 @@ output "image" {
   value       = local.resolved_image
 }
 
+output "default_api_key_secret_id" {
+  description = "Secret Manager secret id holding the default API key (only when create_default_api_key_secret = true). Add the key with: gcloud secrets versions add <this> --data-file=- --project <project_id>"
+  value       = var.create_default_api_key_secret ? google_secret_manager_secret.default_api_key[0].secret_id : null
+}
+
 output "version" {
   description = "Version string baked into this module copy (useful for asserting the right pin was consumed)."
   value       = local.version

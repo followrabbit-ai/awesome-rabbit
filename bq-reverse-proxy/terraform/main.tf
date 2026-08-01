@@ -26,6 +26,10 @@ locals {
     "version"    = replace(local.version, ".", "-")
   }, var.labels)
 
+  # Secret Manager source for DEFAULT_API_KEY: the module-created secret's
+  # id, a caller-supplied secret reference, or null (plain env / disabled).
+  api_key_secret = var.create_default_api_key_secret ? google_secret_manager_secret.default_api_key[0].secret_id : var.default_api_key_secret
+
   base_env = {
     # PORT is reserved by Cloud Run v2 — it is automatically set to match
     # the container port and cannot be overridden here.
@@ -48,6 +52,29 @@ resource "google_service_account" "proxy" {
   account_id   = "${var.service_name}-sa"
   display_name = "SA for ${var.service_name} Cloud Run service"
   description  = "Managed by the bq-reverse-proxy Terraform module."
+}
+
+# -----------------------------------------------------------------------
+# Secret Manager secret for the default API key (optional)
+# -----------------------------------------------------------------------
+
+resource "google_secret_manager_secret" "default_api_key" {
+  count     = var.create_default_api_key_secret ? 1 : 0
+  project   = var.project_id
+  secret_id = "${var.service_name}-default-api-key"
+  labels    = local.base_labels
+
+  replication {
+    auto {}
+  }
+}
+
+resource "google_secret_manager_secret_iam_member" "default_api_key_accessor" {
+  count     = var.create_default_api_key_secret ? 1 : 0
+  project   = var.project_id
+  secret_id = google_secret_manager_secret.default_api_key[0].secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = local.effective_sa_member
 }
 
 # -----------------------------------------------------------------------
@@ -148,6 +175,22 @@ resource "google_cloud_run_v2_service" "proxy" {
         }
       }
 
+      # Optional: DEFAULT_API_KEY sourced from Secret Manager instead of a
+      # plain value. Cloud Run resolves the secret at instance startup; the
+      # key never appears in the revision spec.
+      dynamic "env" {
+        for_each = local.api_key_secret == null ? [] : [1]
+        content {
+          name = "DEFAULT_API_KEY"
+          value_source {
+            secret_key_ref {
+              secret  = local.api_key_secret
+              version = var.default_api_key_secret_version
+            }
+          }
+        }
+      }
+
       # Optional: API_KEY_ROUTES maps URL path aliases to API keys for
       # clients that cannot send the `rabbit-api-key` header. Rendered as
       # "alias1=key1,alias2=key2".
@@ -166,6 +209,21 @@ resource "google_cloud_run_v2_service" "proxy" {
   traffic {
     type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
     percent = 100
+  }
+
+  # The revision resolves the secret at startup — make sure the accessor
+  # grant exists before the rollout, not in parallel with it.
+  depends_on = [google_secret_manager_secret_iam_member.default_api_key_accessor]
+
+  lifecycle {
+    precondition {
+      condition = length([for set in [
+        nonsensitive(var.default_api_key != null),
+        var.create_default_api_key_secret,
+        var.default_api_key_secret != null,
+      ] : set if set]) <= 1
+      error_message = "Set at most one of default_api_key, create_default_api_key_secret, and default_api_key_secret — they are mutually exclusive sources for DEFAULT_API_KEY."
+    }
   }
 }
 
