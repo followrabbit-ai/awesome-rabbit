@@ -35,6 +35,16 @@ api_keys = {
 # api_keys_secret         = "projects/other-proj/secrets/my-rabbit-keys"
 # api_keys_secret_version = "latest"
 
+# Optional: per-workload optimizer config, keyed by api_keys alias
+# ("default" = root traffic). Overrides the server-side per-key settings —
+# see "Per-Workload Optimizer Configuration" in the README.
+# Values are verbatim optimizer JSON (camelCase). Pricing mode is always
+# derived per job project and cannot be set here.
+# optimizer_configs = {
+#   default = { statementLevelOverride = true }
+#   dbt     = { reservationIds = ["my-project:EU.my-reservation"] }
+# }
+
 # -----------------------------------------------------------------------
 # Access model — pick one
 # -----------------------------------------------------------------------
