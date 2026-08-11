@@ -345,8 +345,10 @@ service can only be reached through an entry point you control (a load
 balancer, or another internal address). Independent of `ingress`: ingress
 controls where traffic may come from, this removes the built-in hostname.
 
-The `service_url` output stays populated with the (now unresolvable) default
-URI — point clients at your own endpoint instead.
+With this on, Cloud Run stops reporting a URI for the service, so the
+module's `service_url` output is an empty string — point clients at your own
+endpoint, and don't feed `service_url` into anything downstream that expects
+a URL.
 
 Requires google provider >= 7.7.0 (the release that promoted this field out
 of beta), which is this module's minimum anyway.
