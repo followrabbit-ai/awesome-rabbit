@@ -35,6 +35,12 @@ api_keys = {
 # api_keys_secret         = "projects/other-proj/secrets/my-rabbit-keys"
 # api_keys_secret_version = "latest"
 
+# Optional: pin every secret this module creates to specific regions instead
+# of Google-managed global replication (data residency policies). Empty =
+# automatic/global. Replication is immutable — changing this recreates the
+# secret and drops its versions.
+# secret_locations = ["europe-west3"]
+
 # Optional: per-workload optimizer config, keyed by api_keys alias
 # ("default" = root traffic). Overrides the server-side per-key settings —
 # see "Per-Workload Optimizer Configuration" in the README.
@@ -65,6 +71,12 @@ api_keys = {
 
 allow_unauthenticated = true
 ingress               = "INGRESS_TRAFFIC_ALL"
+
+# Orthogonal to ingress: turn off public resolution of the built-in
+# *.run.app hostname, so the service is only reachable through an entry
+# point you control (e.g. your own load balancer). Needs google provider
+# >= 7.7.0.
+# default_uri_disabled = true
 
 # -----------------------------------------------------------------------
 # Image — pick the regional mirror closest to your Cloud Run region

@@ -3,8 +3,10 @@ terraform {
 
   required_providers {
     google = {
-      source  = "hashicorp/google"
-      version = ">= 5.0, < 8.0"
+      source = "hashicorp/google"
+      # >= 7.7.0: first GA release with default_uri_disabled on
+      # google_cloud_run_v2_service (beta-only before that).
+      version = ">= 7.7.0, < 8.0"
     }
   }
 }
@@ -35,6 +37,11 @@ locals {
   # Secret Manager source for the whole key map: the module-created
   # secret's id, a caller-supplied secret reference, or null (plain env).
   api_keys_secret = var.create_api_keys_secret ? google_secret_manager_secret.api_keys[0].secret_id : var.api_keys_secret
+
+  # Replication mode for every secret the module creates: user-managed (one
+  # replica per var.secret_locations entry) when locations are pinned,
+  # Google-managed automatic/global otherwise.
+  secret_user_managed = length(var.secret_locations) > 0
 
   # Per-alias optimizer configs, passed through verbatim — the map values
   # already use the optimizer's camelCase field names.
@@ -74,8 +81,26 @@ resource "google_secret_manager_secret" "api_keys" {
   secret_id = "${var.service_name}-api-keys"
   labels    = local.base_labels
 
+  # Automatic (global) replication unless var.secret_locations pins regions —
+  # some organizations require secrets to be region-bound for data residency.
+  # Every secret this module creates uses this same block.
   replication {
-    auto {}
+    dynamic "auto" {
+      for_each = local.secret_user_managed ? [] : [1]
+      content {}
+    }
+
+    dynamic "user_managed" {
+      for_each = local.secret_user_managed ? [1] : []
+      content {
+        dynamic "replicas" {
+          for_each = var.secret_locations
+          content {
+            location = replicas.value
+          }
+        }
+      }
+    }
   }
 }
 
@@ -97,8 +122,9 @@ resource "google_cloud_run_v2_service" "proxy" {
   name     = var.service_name
   labels   = local.base_labels
 
-  ingress             = var.ingress
-  deletion_protection = false
+  ingress              = var.ingress
+  default_uri_disabled = var.default_uri_disabled
+  deletion_protection  = false
 
   template {
     service_account = local.effective_sa_email
