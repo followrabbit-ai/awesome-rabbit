@@ -227,6 +227,32 @@ EOT
 }
 
 # -----------------------------------------------------------------------
+# Secret Manager
+# -----------------------------------------------------------------------
+
+variable "secret_locations" {
+  type        = list(string)
+  description = <<EOT
+Regions every Secret Manager secret this module creates is replicated to
+(user-managed replication), e.g. ["europe-west3"] or [var.region]. Set this
+when your organization requires secrets to be region-bound rather than
+globally replicated. The empty default keeps Google-managed automatic
+(global) replication.
+
+Module-wide on purpose: it covers the API keys secret
+(`create_api_keys_secret = true`) and any further secret the module grows
+later, so residency is configured once rather than per secret. It does NOT
+touch secrets you bring yourself via `api_keys_secret` — those are
+replicated however you created them.
+
+Replication is immutable in Secret Manager: changing this on an existing
+secret makes Terraform destroy and recreate it, which deletes every secret
+version with it. Re-add the keys afterwards (see the README).
+EOT
+  default     = []
+}
+
+# -----------------------------------------------------------------------
 # Runtime knobs
 # -----------------------------------------------------------------------
 
@@ -309,6 +335,23 @@ EOT
     ], var.ingress)
     error_message = "ingress must be one of INGRESS_TRAFFIC_ALL | INGRESS_TRAFFIC_INTERNAL_ONLY | INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"
   }
+}
+
+variable "default_uri_disabled" {
+  type        = bool
+  description = <<EOT
+Disable public resolution of the Cloud Run default `*.run.app` URI, so the
+service can only be reached through an entry point you control (a load
+balancer, or another internal address). Independent of `ingress`: ingress
+controls where traffic may come from, this removes the built-in hostname.
+
+The `service_url` output stays populated with the (now unresolvable) default
+URI — point clients at your own endpoint instead.
+
+Requires google provider >= 7.7.0 (the release that promoted this field out
+of beta), which is this module's minimum anyway.
+EOT
+  default     = false
 }
 
 variable "invoker_members" {

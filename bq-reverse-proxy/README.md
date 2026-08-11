@@ -58,7 +58,7 @@ Before deploying, ensure you have:
   ```
 
   If you store the Rabbit API key in Secret Manager (recommended — see [Storing the API Keys in Secret Manager](#storing-the-api-keys-in-secret-manager)), also enable `secretmanager.googleapis.com`.
-2. **Terraform** >= 1.6 installed locally ([install guide](https://developer.hashicorp.com/terraform/install))
+2. **Terraform** >= 1.6 installed locally ([install guide](https://developer.hashicorp.com/terraform/install)), with the **Google provider >= 7.7.0** (the release that promoted `default_uri_disabled` to GA — the module pins `>= 7.7.0, < 8.0`). If you are upgrading from an older pin, run `terraform init -upgrade`.
 3. **gcloud CLI** authenticated with a principal that has permissions to create Cloud Run services, service accounts, and IAM bindings. You need **two** logins:
   - `gcloud auth login` — for gcloud CLI commands
   - `gcloud auth application-default login` — Terraform's Google provider authenticates via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) (ADC), which is separate from your gcloud CLI login. Without ADC, `terraform plan`/`apply` fails with a credentials error.
@@ -201,6 +201,19 @@ gcloud secrets add-iam-policy-binding my-rabbit-api-keys \
 
 `api_keys`, `create_api_keys_secret`, `api_keys_secret`, and the deprecated `default_api_key`/`api_key_routes` pair are mutually exclusive ways to configure the keys — Terraform fails the plan if more than one is set.
 
+### Pinning secrets to a region
+
+By default Secret Manager replicates a secret automatically across regions (Google-managed, global). If your organization requires secrets to stay in named locations, set `secret_locations`:
+
+```hcl
+create_api_keys_secret = true
+secret_locations       = ["europe-west3"]   # or [var.region], or several regions
+```
+
+This is module-wide rather than per-secret: it applies to every secret the module creates, so residency is configured once. It does **not** apply to a secret you bring yourself via `api_keys_secret` — that one is replicated however you created it.
+
+> **Replication is immutable.** Adding, changing, or removing `secret_locations` on an existing module-managed secret makes Terraform **destroy and recreate** it, which deletes all of its versions. Check the plan, and re-add the keys (`gcloud secrets versions add …`) after the apply.
+
 ## Per-Workload Optimizer Configuration
 
 Optimization behavior (pricing mode, reservations, statement-level routing) is normally configured on the Rabbit side per API key. `optimizer_configs` overrides it from your own deployment — self-service, no Rabbit UI involvement — keyed by the same aliases as `api_keys`, with `default` covering root traffic and any alias without its own entry:
@@ -228,6 +241,8 @@ Protect the endpoint at the network layer instead:
 | **Internal (recommended)** | `allow_unauthenticated = true`, `ingress = "INGRESS_TRAFFIC_INTERNAL_ONLY"` | All clients run inside your GCP project / VPC / VPC-SC perimeter (Composer, in-VPC Airflow, dbt on GCE). The URL is unreachable from the internet. |
 | **Internal + Load Balancer** | `allow_unauthenticated = true`, `ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"` | You want to front the proxy with your own Google Cloud Load Balancer (custom domain, Cloud Armor allowlists). |
 | **Public** | `allow_unauthenticated = true`, `ingress = "INGRESS_TRAFFIC_ALL"` | You use SaaS clients that connect from outside your network (Looker, dbt Cloud). |
+
+Orthogonal to all three: `default_uri_disabled = true` turns off public resolution of the built-in `*.run.app` hostname, so the service is only reachable through an entry point you control. `ingress` decides *where traffic may come from*; this decides *whether the default hostname exists at all*. Pair it with the load-balancer model when policy forbids a Google-assigned public hostname. The `service_url` output still reports that URI, but it will no longer resolve — point clients at your own endpoint.
 
 For the **public** model, note what exposure actually means: the proxy is stateless and holds no data — an anonymous caller without a valid BigQuery OAuth token gets errors from BigQuery, exactly as if they hit `bigquery.googleapis.com` directly. If you want to additionally restrict which networks can reach a public endpoint, put it behind a load balancer with [Cloud Armor](https://cloud.google.com/armor) IP allowlists.
 
@@ -600,6 +615,7 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `create_api_keys_secret` | No | `false` | Create a Secret Manager secret for the whole key map; you add the keys (`default=key0,alias1=key1`) as a secret version out-of-band. Needs image ≥ v0.2.0 |
 | `api_keys_secret` | No | `null` | Existing Secret Manager secret holding the key map (short id, or `projects/*/secrets/*` for cross-project). Needs image ≥ v0.2.0 |
 | `api_keys_secret_version` | No | `latest` | Secret version to pin when the keys come from Secret Manager |
+| `secret_locations` | No | `[]` (automatic/global) | Regions every module-created secret is replicated to (see [Pinning secrets to a region](#pinning-secrets-to-a-region)). Changing it recreates the secret |
 | `optimizer_configs` | No | `{}` | Per-workload optimizer config keyed by `api_keys` alias (see [Per-Workload Optimizer Configuration](#per-workload-optimizer-configuration)) |
 | `default_api_key` | No | `null` | **Deprecated** — use `api_keys = { default = "..." }`. Still works |
 | `api_key_routes` | No | `{}` | **Deprecated** — use `api_keys` with non-`default` aliases. Still works |
@@ -607,6 +623,7 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `image_tag` | No | `latest` | Image version to deploy. Set a release tag (e.g. `v0.1.0`) to pin |
 | `allow_unauthenticated` | No | `false` | Grant `run.invoker` to `allUsers` (see [Choosing an Access Model](#choosing-an-access-model)) |
 | `ingress` | No | `INGRESS_TRAFFIC_ALL` | `..._ALL`, `..._INTERNAL_ONLY`, or `..._INTERNAL_LOAD_BALANCER` |
+| `default_uri_disabled` | No | `false` | Disable public resolution of the default `*.run.app` URI (see [Choosing an Access Model](#choosing-an-access-model)). Needs google provider ≥ 7.7.0 |
 | `invoker_members` | No | `[]` | IAM principals granted `run.invoker` (only when `allow_unauthenticated = false`) |
 | `service_name` | No | `bq-reverse-proxy` | Cloud Run service name |
 | `service_account_email` | No | `null` (created) | Bring your own runtime service account |
