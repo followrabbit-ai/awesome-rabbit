@@ -636,8 +636,10 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `request_timeout` | No | `10m` | Upstream request timeout (Go duration) |
 | `bq_job_optimizer_timeout` | No | `2s` | Optimizer call timeout (Go duration); fail-open on expiry |
 | `max_body_bytes` | No | `1048576` | Max body size buffered for optimization; larger bodies pass through untouched |
-| `vpc_connector` | No | `null` | VPC access connector ID |
-| `vpc_egress` | No | `PRIVATE_RANGES_ONLY` | VPC egress mode (only with `vpc_connector`) |
+| `vpc_connector` | No | `null` | VPC access connector ID. Mutually exclusive with `vpc_network` |
+| `vpc_network` | No | `null` | Direct VPC egress network, `projects/<host>/global/networks/<name>`. No connector instances needed |
+| `vpc_subnetwork` | No | `null` | Direct VPC egress subnetwork, `projects/<host>/regions/<region>/subnetworks/<name>`. Region must match the service. Required with `vpc_network` |
+| `vpc_egress` | No | `PRIVATE_RANGES_ONLY` | VPC egress mode. Use `ALL_TRAFFIC` to route googleapis calls through the VPC |
 | `labels` | No | `{}` | Labels for created resources |
 | `extra_env` | No | `{}` | Extra container environment variables |
 

@@ -410,6 +410,32 @@ variable "vpc_egress" {
   default     = "PRIVATE_RANGES_ONLY"
 }
 
+variable "vpc_network" {
+  type        = string
+  description = <<EOT
+Fully-qualified network for Direct VPC egress
+(`projects/<host>/global/networks/<name>`). Set together with
+`vpc_subnetwork` as an alternative to `vpc_connector` — Direct VPC egress
+needs no connector instances. Leave null for public (serverless) egress.
+
+Point this at a subnet whose Private Google Access is OFF and whose region
+has a Cloud NAT with reserved static IPs to give the proxy a fixed,
+allowlistable egress IP — required when the BigQuery it fronts sits behind
+VPC Service Controls.
+EOT
+  default     = null
+}
+
+variable "vpc_subnetwork" {
+  type        = string
+  description = <<EOT
+Fully-qualified subnetwork for Direct VPC egress
+(`projects/<host>/regions/<region>/subnetworks/<name>`). Must be in the
+same region as the service. Required when `vpc_network` is set.
+EOT
+  default     = null
+}
+
 variable "labels" {
   type        = map(string)
   description = "Labels applied to every resource this module creates."

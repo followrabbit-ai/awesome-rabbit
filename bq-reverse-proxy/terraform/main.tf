@@ -135,12 +135,24 @@ resource "google_cloud_run_v2_service" "proxy" {
       max_instance_count = var.max_instances
     }
 
-    # VPC connector (optional).
+    # VPC egress (optional) — either a connector (var.vpc_connector) or
+    # Direct VPC egress (var.vpc_network + var.vpc_subnetwork). Direct is
+    # preferred: no connector VMs to size or pay for, and it is what gives
+    # the service a fixed NAT egress IP when the subnet's Private Google
+    # Access is off.
     dynamic "vpc_access" {
-      for_each = var.vpc_connector == null ? [] : [1]
+      for_each = var.vpc_connector == null && var.vpc_network == null ? [] : [1]
       content {
         connector = var.vpc_connector
         egress    = var.vpc_egress
+
+        dynamic "network_interfaces" {
+          for_each = var.vpc_network == null ? [] : [1]
+          content {
+            network    = var.vpc_network
+            subnetwork = var.vpc_subnetwork
+          }
+        }
       }
     }
 
@@ -270,6 +282,18 @@ resource "google_cloud_run_v2_service" "proxy" {
         nonsensitive(var.default_api_key != null || length(var.api_key_routes) > 0),
       ] : set if set]) <= 1
       error_message = "Configure the API keys through exactly one mechanism: api_keys, create_api_keys_secret, api_keys_secret, or the deprecated default_api_key/api_key_routes pair."
+    }
+
+    # Cloud Run rejects these combinations with an opaque API error; catch
+    # them at plan time instead.
+    precondition {
+      condition     = var.vpc_network == null || var.vpc_subnetwork != null
+      error_message = "vpc_subnetwork is required when vpc_network is set — Direct VPC egress needs both."
+    }
+
+    precondition {
+      condition     = var.vpc_connector == null || var.vpc_network == null
+      error_message = "Set either vpc_connector or vpc_network, not both — a service uses one egress mechanism."
     }
   }
 }
