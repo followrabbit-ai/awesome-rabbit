@@ -26,7 +26,7 @@ This skill guides you through performing a cost review using the `followrabbit` 
 
 This skill invokes the local `followrabbit` CLI. The `costreview` command sends the following to `https://api.agentic.followrabbit.ai` (default; overridable with `--api-url`) over HTTPS:
 
-- **Full file contents of every `*.tf`, `*.tfvars`, and `*.tfvars.json` file** under the working directory, up to a combined 512 KiB budget (over-budget files are listed by path only).
+- **Full file contents of every `*.tf`, `*.tfvars`, and `*.tfvars.json` file** under the working directory, up to a combined 512 KiB budget. For files over the budget, the raw content is omitted, but their extracted resource blocks — including every quoted attribute value — are still transmitted in the resource index below.
 - **Full file contents of every `*.sql` file** under the working directory, with each file capped at 100 KiB (truncation marker appended when capped).
 - The **relative paths** (from the scan root) of every file listed above.
 - A summarized index of Terraform resources, modules, and `.tfvars` environment files extracted from the same files (alongside, not instead of, the raw content).
