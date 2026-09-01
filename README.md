@@ -96,6 +96,7 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 ## Skills
 
 - **cost-review** — Scans local Terraform and SQL files, runs AI-powered cost analysis via the FollowRabbit API, presents optimization instructions, and offers to apply suggestions directly to code. User-invocable via `/followrabbit:cost-review`.
+- **sql-review** — Deterministic BigQuery SQL cost checks via `followrabbit sql` (CLI 0.2.0+). No LLM and no LLM quota — fast enough to run on every iteration. User-invocable via `/followrabbit:sql-review`.
 
 ## Agent
 
