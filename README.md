@@ -42,6 +42,9 @@ followrabbit auth login --key <YOUR_API_KEY>
 
 # 3. First cost review of your Terraform / SQL
 followrabbit costreview --dir ./infra --types tf,sql
+
+# 4. Deterministic BigQuery SQL check — no model call, no quota spend (0.2.0+)
+followrabbit sql models/
 ```
 
 Full command, flag, environment-variable, and troubleshooting documentation: [followrabbit-cli/README.md](followrabbit-cli/).
@@ -117,7 +120,8 @@ Other commands:
 - `followrabbit context` — local only, no API call.
 - `followrabbit status` — sends only your API key.
 - `followrabbit recos list` — sends your git `origin` remote URL (auto-detected) as a `?repo=` query parameter.
+- `followrabbit sql` — sends only the SQL files you name (contents and relative paths); no repository scan. The server keeps per-run counts and rule ids, and a keyed path hash only for keys tied to a customer account — see the [CLI reference](followrabbit-cli/#sql).
 
-API keys are stored locally under `~/.config/followrabbit/credentials.json` (mode `0600`) and travel only in the `X-Rabbit-Api-Key` request header (never in bodies or URLs). Every request also includes a `User-Agent: followrabbit-cli/<version>` header. No telemetry, analytics, error-reporting, or update-check traffic is generated.
+API keys are stored locally under `~/.config/followrabbit/credentials.json` (mode `0600`) and travel only in the `X-Rabbit-Api-Key` request header (never in bodies or URLs). Every request also includes a `User-Agent: followrabbit-cli/<version>` header. The CLI generates no telemetry, analytics, error-reporting, or update-check traffic of its own; server-side, `followrabbit sql` keeps the run record described above.
 
 See [followrabbit.ai/en/rabbit-privacy-policy](https://followrabbit.ai/en/rabbit-privacy-policy) for full details.

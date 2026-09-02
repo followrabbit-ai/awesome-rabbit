@@ -2,7 +2,7 @@
 
 Reference for the `followrabbit` command-line tool — the entrypoint for Rabbit cost-optimization workflows that run from a terminal, a CI pipeline, or an AI coding agent.
 
-Everything below was verified against the shipped binary **v0.1.3** by running the commands. For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
+Everything below was verified against the shipped binary **v0.2.0** by running the commands. For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
 
 ---
 
@@ -85,6 +85,7 @@ These work with every command:
 | `4` | Input — invalid flags or arguments (also the no-browser-login case above). |
 | `5` | Non-2xx response from the API. |
 | `6` | Network error. |
+| `7` | `sql --fail-on` threshold met — a finding at or above the given level exists. |
 
 ---
 
@@ -100,7 +101,7 @@ followrabbit version
 
 ### `status`
 
-Show API key info, quota usage for the current period, and recent activity.
+Show API key info and quota usage for the current period.
 
 ```bash
 followrabbit status
@@ -135,6 +136,38 @@ followrabbit context --dir ./infra --types tf,sql --json
 ```
 
 Same `--dir` and `--types` flags as `costreview`.
+
+### `sql`
+
+Deterministic BigQuery cost checks over the SQL you name — files, directories, stdin, or an inline query. No model call and no quota spend, so it is meant to run on every save or from a pre-commit hook. Requires **0.2.0** or newer; against an older CLI the command is unknown.
+
+```bash
+followrabbit sql query.sql                       # named file
+followrabbit sql models/ transforms/             # directories, walked for *.sql and *.sqlx
+cat q.sql | followrabbit sql                     # stdin
+followrabbit sql -q "SELECT * FROM \`p.d.t\`"    # inline SQL
+followrabbit sql models/ --fail-on high --json   # CI gate
+```
+
+| Flag | Description |
+|---|---|
+| `-q, --query <sql>` | Inline SQL instead of paths. |
+| `--fail-on <level>` | Exit 7 when a finding at or above `high`, `medium`, or `low` exists. Without it, findings never fail the command. |
+| `--all` | Print every finding instead of the first 20. |
+| `--show-skipped` | List skipped files individually with their reason. |
+| `--stdin-filename <name>` | Name to report for stdin or `--query` input. |
+
+How inputs are treated:
+
+- A file you name, stdin, and `--query` are checked as BigQuery by declaration — no dialect gate.
+- A directory is walked for `*.sql` and `*.sqlx`. Each file found passes through a BigQuery dialect gate first; files it does not recognise are skipped with reason `not_bigquery`. Hidden directories and `target/`, `node_modules/`, `dbt_packages/`, `dbt_modules/`, `venv/`, `__pycache__/`, `build/`, `dist/` are not descended into. A directory you name is always read, so `followrabbit sql target/compiled/` works.
+- Templates are not rendered. A file still carrying `{{`, `{%`, `${`, or `@{` is skipped with reason `unresolved_templating` — run `dbt compile` and point at `target/compiled/`.
+- Other skip reasons: `parse_error`, `too_large` (over 128 KiB), `empty`. Skipped files are always counted in the summary; zero findings with skipped files is not a clean bill of health.
+- Limits: 128 KiB per file, 500 files per run (more is exit 4 — narrow the paths).
+
+Each finding carries the file, line span, level (`high` / `medium` / `low`), a message, an optional fix, and a `measure_first` flag meaning measure the impact before applying the fix.
+
+**Data sent:** the contents and relative paths of the SQL files named, and nothing else from the repository. The SQL is analysed in memory and not stored. The server keeps one record per run — file and finding counts and the rule ids that fired — plus a keyed hash of each file path only when the API key belongs to a customer account; keys without one leave no path information.
 
 ### `recos list`
 
@@ -171,6 +204,8 @@ Run `followrabbit completion --help` for per-shell load instructions.
 **Exit 3** — your key's quota for the period is exhausted or you are rate limited. Check usage with `followrabbit status`; quota is managed at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai).
 
 **`400 INVALID_REQUEST` from `costreview` on large repos** — the server caps uploaded context at 500,000 characters. SQL files are capped at 100 KiB each but there is no aggregate client-side cap, so a repo with roughly six or more large SQL files can exceed the ceiling. Narrow the scan with `--dir`, or split the review.
+
+**`unknown command "sql"`** — the installed CLI predates 0.2.0. Upgrade with the matching tool (see [Install](#install)). If the CLI is current but reports `NOT_SUPPORTED` (exit 5), the `--api-url` you point at does not serve the command yet.
 
 **Corporate proxy / TLS interception** — the CLI talks HTTPS to `api.agentic.followrabbit.ai`. If your proxy re-signs TLS, the request fails with a certificate error (exit 6); have the proxy's CA in the system trust store or allowlist the API host.
 
