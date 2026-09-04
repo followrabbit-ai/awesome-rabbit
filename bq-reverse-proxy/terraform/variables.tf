@@ -442,6 +442,25 @@ variable "labels" {
   default     = {}
 }
 
+variable "enable_pool_reroute" {
+  type        = bool
+  description = <<-EOT
+    Enable on-demand pool rerouting (sets ENABLE_POOL_REROUTE). When the
+    bq-job-optimizer places a job in an on-demand pool project, the proxy
+    moves it there — rewriting the request path — and transparently resolves
+    the client's later job-scoped calls (jobs.get, getQueryResults,
+    jobs.cancel, jobs.delete) to wherever the job actually ran.
+
+    Off by default; leaving it off keeps the response path byte-for-byte
+    unchanged. Requires bq_job_optimizer_url and an API key: the pool project
+    list is read from the optimizer, not configured here. Every identity whose
+    jobs may be routed needs bigquery.jobUser on each pool project.
+
+    Needs proxy image >= v0.3.0.
+  EOT
+  default     = false
+}
+
 variable "extra_env" {
   type        = map(string)
   description = "Extra environment variables to set on the Cloud Run container (e.g. custom OTEL config)."

@@ -232,6 +232,19 @@ resource "google_cloud_run_v2_service" "proxy" {
         }
       }
 
+      # Optional: on-demand pool rerouting. Emitted only when enabled, so a
+      # deployment that leaves it off keeps a byte-identical revision spec.
+      # The proxy defaults it to off, and refuses to start with it on unless
+      # it has both an optimizer URL and an API key — see the precondition
+      # below and the api_keys/default_api_key variables.
+      dynamic "env" {
+        for_each = var.enable_pool_reroute ? [1] : []
+        content {
+          name  = "ENABLE_POOL_REROUTE"
+          value = "true"
+        }
+      }
+
       # Optional: per-workload optimizer configs. Plain env — the config is
       # not sensitive and both proxy and optimizer log it for attribution.
       dynamic "env" {
@@ -282,6 +295,21 @@ resource "google_cloud_run_v2_service" "proxy" {
         nonsensitive(var.default_api_key != null || length(var.api_key_routes) > 0),
       ] : set if set]) <= 1
       error_message = "Configure the API keys through exactly one mechanism: api_keys, create_api_keys_secret, api_keys_secret, or the deprecated default_api_key/api_key_routes pair."
+    }
+
+    # Pool rerouting needs the optimizer: the proxy asks it where to place a
+    # job, and reads the pool project list from it (GET /v1/pool-projects).
+    # The proxy refuses to start without both, which surfaces here as a
+    # revision that never passes its health check and a deploy that times out
+    # — catch it at plan time with a message that says what is missing.
+    precondition {
+      condition = !var.enable_pool_reroute || (var.bq_job_optimizer_url != "" && length([for set in [
+        nonsensitive(length(var.api_keys) > 0),
+        var.create_api_keys_secret,
+        var.api_keys_secret != null,
+        nonsensitive(var.default_api_key != null || length(var.api_key_routes) > 0),
+      ] : set if set]) >= 1)
+      error_message = "enable_pool_reroute requires bq_job_optimizer_url and an API key (api_keys, create_api_keys_secret, api_keys_secret, or default_api_key/api_key_routes). Without both the proxy exits at startup."
     }
 
     # Cloud Run rejects these combinations with an opaque API error; catch

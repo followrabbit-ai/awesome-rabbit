@@ -636,6 +636,7 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `request_timeout` | No | `10m` | Upstream request timeout (Go duration) |
 | `bq_job_optimizer_timeout` | No | `2s` | Optimizer call timeout (Go duration); fail-open on expiry |
 | `max_body_bytes` | No | `1048576` | Max body size buffered for optimization; larger bodies pass through untouched |
+| `enable_pool_reroute` | No | `false` | Move jobs the optimizer places in an on-demand pool project, and resolve the client's job-scoped calls to wherever the job ran. Requires `bq_job_optimizer_url` + an API key, and proxy image >= `v0.3.0` |
 | `vpc_connector` | No | `null` | VPC access connector ID. Mutually exclusive with `vpc_network` |
 | `vpc_network` | No | `null` | Direct VPC egress network, `projects/<host>/global/networks/<name>`. No connector instances needed |
 | `vpc_subnetwork` | No | `null` | Direct VPC egress subnetwork, `projects/<host>/regions/<region>/subnetworks/<name>`. Region must match the service. Required with `vpc_network` |
@@ -660,6 +661,7 @@ These are the environment variables the proxy container reads. The Terraform con
 | `REQUEST_TIMEOUT` | `10m` | `request_timeout` | Upstream request timeout |
 | `MAX_BODY_BYTES` | `1048576` | `max_body_bytes` | Max buffered body size |
 | `LOG_LEVEL` | `info` | `log_level` | Log verbosity |
+| `ENABLE_POOL_REROUTE` | _(unset = off)_ | `enable_pool_reroute` | On-demand pool rerouting. Pool projects are read from the optimizer, not configured here |
 
 
 ## Updating the Proxy
