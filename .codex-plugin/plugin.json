@@ -34,8 +34,8 @@
       "Write"
     ],
     "websiteURL": "https://followrabbit.ai",
-    "privacyPolicyURL": "https://followrabbit.ai/privacy",
-    "termsOfServiceURL": "https://followrabbit.ai/terms",
+    "privacyPolicyURL": "https://followrabbit.ai/en/rabbit-privacy-policy",
+    "termsOfServiceURL": "https://followrabbit.ai/en/rabbit-general-terms-and-conditions",
     "defaultPrompt": [
       "Run a FollowRabbit cost review on this repository and summarize the optimization opportunities.",
       "Check these Terraform changes for cost impact before I commit.",
