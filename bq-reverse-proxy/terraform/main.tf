@@ -31,8 +31,22 @@ locals {
   # Plain-text key sources: the unified api_keys map ("default" alias =
   # fallback key) or the deprecated default_api_key / api_key_routes pair.
   # Split in Terraform so plain mode works with any proxy image version.
-  plain_default_key = var.default_api_key != null ? var.default_api_key : lookup(var.api_keys, "default", null)
-  plain_routes      = length(var.api_key_routes) > 0 ? var.api_key_routes : { for alias, key in var.api_keys : alias => key if alias != "default" }
+  # An empty string and null both mean "no key" — and "" turns up more often
+  # than null. GitHub Actions substitutes an empty string for an unset secret,
+  # so a caller wiring TF_VAR_default_api_key from a secret that does not exist
+  # passes "" here. Treated as a configured key, that rendered DEFAULT_API_KEY
+  # as an empty env var: indistinguishable from a real key by inspection, and
+  # enough to satisfy the enable_pool_reroute precondition below while leaving
+  # the proxy unable to start. Normalise to null so every consumer — the env
+  # blocks and that precondition — sees "no key" and says so.
+  # trimspace: a key pasted with a trailing newline is the same mistake.
+  default_key_raw   = var.default_api_key != null ? trimspace(var.default_api_key) : trimspace(lookup(var.api_keys, "default", ""))
+  plain_default_key = local.default_key_raw != "" ? local.default_key_raw : null
+
+  # Same for routes: drop blank-valued aliases before deciding whether any
+  # routes exist, so a map of empty keys is not mistaken for a configured one.
+  routes_raw   = length(var.api_key_routes) > 0 ? var.api_key_routes : { for alias, key in var.api_keys : alias => key if alias != "default" }
+  plain_routes = { for alias, key in local.routes_raw : alias => key if trimspace(key) != "" }
 
   # Secret Manager source for the whole key map: the module-created
   # secret's id, a caller-supplied secret reference, or null (plain env).
