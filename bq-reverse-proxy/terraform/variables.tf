@@ -452,9 +452,30 @@ variable "enable_pool_reroute" {
     jobs.cancel, jobs.delete) to wherever the job actually ran.
 
     Off by default; leaving it off keeps the response path byte-for-byte
-    unchanged. Requires bq_job_optimizer_url and an API key: the pool project
-    list is read from the optimizer, not configured here. Every identity whose
-    jobs may be routed needs bigquery.jobUser on each pool project.
+    unchanged. Every identity whose jobs may be routed needs bigquery.jobUser
+    on each pool project.
+
+    Requires bq_job_optimizer_url AND an API key the proxy can use on its own
+    behalf — the pool project list is read from the optimizer (refreshed in the
+    background), not configured here.
+
+    Note the proxy needs a key CONFIGURED, not merely present on incoming
+    requests. A deployment where every client sends its own `rabbit-api-key`
+    header works fine for per-request optimization, but the background refresh
+    has no incoming request to take a key from. With the flag on and no
+    configured key the proxy exits at startup:
+
+      failed to load config: ENABLE_POOL_REROUTE=true requires an API key
+      (DEFAULT_API_KEY or API_KEY_ROUTES)
+
+    Supply one via `api_keys` (a "default" alias, or any route alias), or via
+    the Secret Manager options. Beware a secret that EXISTS but holds an empty
+    value: the plan-time check below sees a secret configured and passes, and
+    the failure only appears when the container starts.
+
+    The pool list is per-tenant, so use a key belonging to the tenant whose
+    pool the jobs should land in; the proxy allowlists only that tenant'"'"'s
+    pool projects.
 
     Needs proxy image >= v0.3.0.
   EOT
