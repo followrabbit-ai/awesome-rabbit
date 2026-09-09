@@ -650,7 +650,7 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `request_timeout` | No | `10m` | Upstream request timeout (Go duration) |
 | `bq_job_optimizer_timeout` | No | `2s` | Optimizer call timeout (Go duration); fail-open on expiry |
 | `max_body_bytes` | No | `1048576` | Max body size buffered for optimization; larger bodies pass through untouched |
-| `enable_pool_reroute` | No | `false` | Move jobs the optimizer places in an on-demand pool project, and resolve the client's job-scoped calls to wherever the job ran. Requires `bq_job_optimizer_url` + an API key, and proxy image >= `v0.3.0` |
+| `enable_pool_reroute` | No | `false` | Move jobs the optimizer places in an on-demand pool project, and resolve the client's job-scoped calls to wherever the job ran. Requires `bq_job_optimizer_url` + a **configured** API key (see below), and proxy image >= `v0.3.0` |
 | `vpc_connector` | No | `null` | VPC access connector ID. Mutually exclusive with `vpc_network` |
 | `vpc_network` | No | `null` | Direct VPC egress network, `projects/<host>/global/networks/<name>`. No connector instances needed |
 | `vpc_subnetwork` | No | `null` | Direct VPC egress subnetwork, `projects/<host>/regions/<region>/subnetworks/<name>`. Region must match the service. Required with `vpc_network` |
@@ -676,6 +676,34 @@ These are the environment variables the proxy container reads. The Terraform con
 | `MAX_BODY_BYTES` | `1048576` | `max_body_bytes` | Max buffered body size |
 | `LOG_LEVEL` | `info` | `log_level` | Log verbosity |
 | `ENABLE_POOL_REROUTE` | _(unset = off)_ | `enable_pool_reroute` | On-demand pool rerouting. Pool projects are read from the optimizer, not configured here |
+
+### Pool rerouting needs a key of its own
+
+Turning on `enable_pool_reroute` requires an API key the proxy can use **on its
+own behalf**, because it reads the pool project list from the optimizer on a
+background refresh — not on the back of a client request.
+
+This catches out a deployment where every client sends its own `rabbit-api-key`
+header. That works fine for per-request optimization, so it can look like the
+proxy "has" a key. The background refresh has no incoming request to take one
+from, so with the flag on and nothing configured the proxy refuses to start:
+
+```
+failed to load config: ENABLE_POOL_REROUTE=true requires an API key (DEFAULT_API_KEY or API_KEY_ROUTES)
+```
+
+Supply one through `api_keys` (a `default` alias, or any route alias) or the
+Secret Manager options.
+
+> **A secret that exists but is empty passes the plan.** The module's
+> precondition checks that a key mechanism is *configured*; Terraform cannot
+> read the secret's value. An empty secret therefore plans cleanly and fails
+> when the container starts — the revision never becomes ready, and traffic
+> stays on the previous one.
+
+The pool list is **per-tenant**: use a key belonging to the tenant whose pool
+the jobs should land in, since the proxy allowlists only that tenant's pool
+projects.
 
 
 ## Updating the Proxy
