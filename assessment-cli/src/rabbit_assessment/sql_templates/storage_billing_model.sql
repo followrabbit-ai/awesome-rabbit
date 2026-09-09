@@ -31,7 +31,9 @@ priced AS (
     s.project_id,
     s.dataset_id,
     s.table_count,
-    COALESCE(m.storage_billing_model, 'LOGICAL') AS current_billing_model,
+    -- A dataset with no storage_billing_model option uses the project/org
+    -- default; assume ${default_storage_billing_model} (configurable).
+    COALESCE(m.storage_billing_model, '${default_storage_billing_model}') AS current_billing_model,
 
     s.active_logical_bytes,
     s.long_term_logical_bytes,

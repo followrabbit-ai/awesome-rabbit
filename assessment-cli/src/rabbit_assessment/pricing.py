@@ -21,7 +21,9 @@ from .models import utc_now
 log = logging.getLogger(__name__)
 
 _ENV_PREFIX = "BQCOST_"
-_PRICE_FIELDS = tuple(PricingConfig.model_fields.keys())
+_CONFIG_FIELDS = tuple(PricingConfig.model_fields.keys())
+# Fields that hold text rather than a numeric price.
+_TEXT_FIELDS = frozenset({"default_storage_billing_model"})
 _BIGQUERY_SERVICE = "BigQuery"
 
 
@@ -48,11 +50,15 @@ class FxRate:
         }
 
 
-def _env_overrides() -> dict[str, float]:
-    out: dict[str, float] = {}
-    for field in _PRICE_FIELDS:
+def _env_overrides() -> dict[str, float | str]:
+    out: dict[str, float | str] = {}
+    for field in _CONFIG_FIELDS:
         raw = os.environ.get(_ENV_PREFIX + field.upper())
-        if raw is not None:
+        if raw is None:
+            continue
+        if field in _TEXT_FIELDS:
+            out[field] = raw.strip()
+        else:
             try:
                 out[field] = float(raw)
             except ValueError:
@@ -62,33 +68,34 @@ def _env_overrides() -> dict[str, float]:
 
 def resolve_pricing(
     config_path: Path | None,
-    cli_overrides: dict[str, float | None],
+    cli_overrides: dict[str, float | str | None],
     locations: list[str],
 ) -> dict[str, PricingConfig]:
-    """Resolve per-location pricing.
+    """Resolve per-location pricing and settings.
 
     Precedence (highest first): CLI flag > env var > config location override >
     config base > built-in default.
     """
-    base: dict[str, float] = {}
+    base: dict[str, float | str] = {}
     per_location: dict[str, dict] = {}
     if config_path is not None:
         data = tomllib.loads(config_path.read_text(encoding="utf-8"))
         pricing = dict(data.get("pricing", {}))
         per_location = dict(pricing.pop("locations", {}) or {})
-        base = {k: v for k, v in pricing.items() if k in _PRICE_FIELDS}
+        base = {k: v for k, v in pricing.items() if k in _CONFIG_FIELDS}
 
     env = _env_overrides()
     cli = {k: v for k, v in cli_overrides.items() if v is not None}
 
     resolved: dict[str, PricingConfig] = {}
     for loc in locations:
-        merged: dict[str, float] = dict(base)
+        merged: dict[str, float | str] = dict(base)
         loc_override = per_location.get(loc.lower(), {})
-        merged.update({k: v for k, v in loc_override.items() if k in _PRICE_FIELDS})
+        merged.update({k: v for k, v in loc_override.items() if k in _CONFIG_FIELDS})
         merged.update(env)
-        merged.update(cli)  # type: ignore[arg-type]
-        resolved[loc] = PricingConfig(**merged)
+        merged.update(cli)
+        # pydantic validates/coerces each field; mypy can't see through **kwargs.
+        resolved[loc] = PricingConfig(**merged)  # type: ignore[arg-type]
     return resolved
 
 

@@ -7,6 +7,21 @@ def test_defaults_when_no_config():
     resolved = resolve_pricing(None, {}, ["US"])
     assert resolved["US"].slot_hour_price == 0.06
     assert resolved["US"].ondemand_price == 6.25
+    assert resolved["US"].default_storage_billing_model == "LOGICAL"
+
+
+def test_default_storage_billing_model_cli_override():
+    resolved = resolve_pricing(None, {"default_storage_billing_model": "PHYSICAL"}, ["US"])
+    assert resolved["US"].default_storage_billing_model == "PHYSICAL"
+
+
+def test_default_storage_billing_model_from_config(tmp_path):
+    config = tmp_path / "pricing.toml"
+    config.write_text(
+        "[pricing]\ndefault_storage_billing_model = 'PHYSICAL'\n", encoding="utf-8"
+    )
+    resolved = resolve_pricing(config, {}, ["US"])
+    assert resolved["US"].default_storage_billing_model == "PHYSICAL"
 
 
 def test_cli_override_wins():

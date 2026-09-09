@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict, Field
 
 
@@ -21,3 +23,7 @@ class PricingConfig(BaseModel):
     storage_logical_lt_price: float = Field(default=0.01, gt=0)
     storage_physical_active_price: float = Field(default=0.04, gt=0)
     storage_physical_lt_price: float = Field(default=0.02, gt=0)
+
+    # Billing model assumed for datasets that have no explicit
+    # storage_billing_model option set. BigQuery's own default is LOGICAL.
+    default_storage_billing_model: Literal["LOGICAL", "PHYSICAL"] = "LOGICAL"

@@ -7,6 +7,9 @@ It is designed for an operator with **limited visibility** — only project-leve
 access. Every query is project-scoped, and any project, location, or category
 the operator cannot read is **skipped and reported**, never fatal.
 
+> **Can't run Python 3?** A dependency-light Bash port (`gcloud` + `bq` only,
+> no Python) lives in [`bash/`](bash/README.md) — for hosts stuck on Python 2.
+
 ## What it collects
 
 For each accessible project, in each requested BigQuery location:
@@ -95,6 +98,7 @@ python rabbit_assess.py report --run-dir ./rabbit-assessment-output/<run-id>
 | `--lookback-days` | `30` | analysis window |
 | `--currency` | `USD` | report's local-currency column; FX is auto-derived |
 | `--config` | — | TOML pricing file (negotiated rates) |
+| `--default-storage-billing-model` | `LOGICAL` | model assumed for datasets with no explicit `storage_billing_model` option (`LOGICAL` or `PHYSICAL`) |
 | `--categories` | all | restrict to a subset; repeatable |
 | `--dry-run` | off | render + print SQL, no queries |
 
@@ -106,13 +110,17 @@ slot_hour_price = 0.04
 ondemand_price = 6.25
 storage_logical_active_price = 0.02
 storage_physical_active_price = 0.04
+# Billing model assumed for datasets with no explicit option (default: LOGICAL)
+default_storage_billing_model = "LOGICAL"
 
 [pricing.locations.eu]
 slot_hour_price = 0.044
 ```
 
 Precedence: CLI flag > `BQCOST_*` env var > config location override > config
-base > built-in BigQuery list price.
+base > built-in default. Every key above (including
+`default_storage_billing_model`) can also be set per the precedence chain via a
+`--…` flag or a `BQCOST_…` environment variable.
 
 ## Output
 
@@ -121,10 +129,11 @@ Each run creates `rabbit-assessment-output/<run-id>/`:
 ```
 manifest.json          run parameters, resolved pricing, FX rate, counts
 report.md              savings report (coverage, opportunities, detail)
-errors.csv             every skipped (project, location, category) with reason
-<category>.csv         raw aggregated rows per category
+errors.csv             every skipped (project, location, category) — short index
+query-errors.log       full error text + the failing SQL for each skip
 rendered_sql/          the exact SQL that ran, per category
-run.log
+run.log                full run log (collection failures included)
+<category>.csv         raw aggregated rows per category
 ```
 
 ## Currency
