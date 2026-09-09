@@ -92,6 +92,20 @@ module "bq_reverse_proxy" {
 }
 ```
 
+> **Pin the module for production.** The `source` above tracks the default
+> branch, so `terraform init` picks up module changes as they land. Note this
+> is the opposite of how the image behaves: `image_tag = "latest"` is resolved
+> to a digest when a revision is created and will **not** move on its own,
+> whereas the module is re-resolved on every `init`.
+>
+> If you manage change explicitly, pin the module to a commit and bump it
+> deliberately — the same discipline as pinning `image_tag` to a release tag
+> rather than `latest`:
+>
+> ```hcl
+> source = "git::https://github.com/followrabbit-ai/awesome-rabbit.git//bq-reverse-proxy/terraform?ref=<commit-sha>"
+> ```
+
 ### Step 1: Configure Variables
 
 ```bash
