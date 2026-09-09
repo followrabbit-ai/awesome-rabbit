@@ -666,6 +666,18 @@ These are the environment variables the proxy container reads. The Terraform con
 
 ## Updating the Proxy
 
+> **Note (empty API keys).** An API key given as an empty string is now treated
+> as *no key*, the same as omitting it — previously it rendered `DEFAULT_API_KEY`
+> as an empty environment variable, which looked configured but could not be
+> used. Blank-valued entries in `api_keys` / `api_key_routes` are dropped for the
+> same reason. If you were passing an empty value (easy to do when wiring a key
+> from a CI secret that is not set — GitHub Actions substitutes `""`), your next
+> `terraform apply` will create a new revision that simply omits the variable.
+> Behaviour is unchanged; the proxy treated both as no key. What does change:
+> `enable_pool_reroute = true` with only blank keys now fails at plan time with
+> a clear message instead of producing a revision that cannot start.
+
+
 By default this package deploys the `latest` release tag. Because the tag itself doesn't change between releases, a plain `terraform apply` sees no diff — force a new revision to pull the newest image:
 
 ```bash
