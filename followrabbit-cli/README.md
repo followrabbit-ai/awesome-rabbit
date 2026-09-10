@@ -238,7 +238,7 @@ A scheduled query is a persistent BigQuery Data Transfer Service config, so it n
 1. **List** the scheduled queries in the project (every location, or `--location`).
 2. **Send** each config to the optimizer, which decides from the query's history whether a slot reservation or on-demand is cheaper for it.
 3. **Receive** either a rewritten config (`decision: apply`) or a skip reason.
-4. On `apply --confirm`, **check** that the identity the scheduled query runs as can use the chosen reservation, then **patch** the config back (`update_mask=params`; nothing else on it changes, including its owner).
+4. On `apply --confirm`, **check** that the identity the scheduled query runs as can use the chosen reservation, **re-read** the config and, only if nobody changed it since the plan was computed, **patch** it back (`update_mask=params`; nothing else on it changes, including its owner). A scheduled query edited in the meantime is left alone and reported as failed with `changed since the plan was computed`; re-run to plan against the current version. `revert` applies the same guard.
 
 What a managed scheduled query's SQL looks like afterwards:
 
@@ -386,6 +386,8 @@ Because each scheduled query is patched independently, an owner mismatch on one 
 **`iam.status: unverified`** — the CLI could not impersonate the run-as service account (grant yourself `roles/iam.serviceAccountTokenCreator` on it), or the owner is another user. Check that identity's access yourself before relying on the next run.
 
 **exit 7, `Cannot modify restricted parameters`** — see the console limitation above.
+
+**exit 7 or 6, `changed since the plan was computed`** — someone edited that scheduled query between the plan and the write, so the CLI did not touch it. Re-run; the new plan is computed against the current SQL.
 
 **Every decision is `skip`** — usually `no_reservation_configured_for_the_region` (no reservation on the key) or `no_historical_data_or_query_too_small` (new queries). `recommend --json` shows `skipReasons` at a glance.
 
