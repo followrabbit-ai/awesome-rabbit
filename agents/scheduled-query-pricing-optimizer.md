@@ -29,7 +29,7 @@ description: |
   <example>
   Context: User wants to undo a previous run
   user: "Roll back the scheduled-query reservation changes you made last week."
-  assistant: "I'll revert every scheduled query Rabbit manages in that project — that removes the SET @@reservation line and Rabbit's comment block, and restores your SQL byte-for-byte."
+  assistant: "I'll preview the queries matching the project, location and filter we used, then confirm the list before reverting. If we cannot identify last week's queries from this conversation, I'll ask which ones you mean."
   </example>
 model: inherit
 ---
@@ -76,6 +76,10 @@ Narrowing flags on every verb: `--location <us|europe|region>` (default every lo
 5. **Apply with `--confirm`.** The CLI first runs a `SET @@reservation = …; SELECT 1` probe as each run-as identity. Exit 5 `IAM_BLOCKED` means nothing was written and the message quotes BigQuery's reason per scheduled query; recommend granting `roles/bigquery.resourceEditor` on the reservation's administration project to that identity and re-running. Only with explicit acknowledgement pass `--ignore-iam-warnings`.
 6. **Report** `summary.applied`, `summary.failed`, `summary.iamUnverified`, and every entry in `data.results[]` with `status: failed`. A `Cannot modify restricted parameters` failure is a console-created scheduled query that only its creator can modify; the message says what to do.
 7. **Verify** with `status --json`.
+
+## Revert scope
+
+Reuse the project, location and filter selected in the conversation. Run `revert` without `--confirm`, show `data.toRevert[]`, then confirm the list before repeating with `--confirm` and the same scope and agreed cap. Filters match display-name substrings; check for unrelated matches. The CLI cannot select a batch or date, so ask which queries the user means if a previous batch cannot be identified. Revert the whole project only when explicitly requested.
 
 ## Exit codes
 

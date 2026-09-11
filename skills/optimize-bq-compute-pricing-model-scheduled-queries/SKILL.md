@@ -145,7 +145,7 @@ Then the skip counts. Point out that `apply --confirm` will first verify each ru
 
 Use `AskUserQuestion`:
 
-> Apply this to N scheduled queries? Their SQL gets a leading `SET @@reservation` line and a trailing Rabbit comment block; everything else stays as it is, and `followrabbit optimize sq-pricing revert --project <id> --confirm` restores the original SQL byte-for-byte.
+> Apply this to N scheduled queries? Their SQL gets a leading `SET @@reservation` line and a trailing Rabbit comment block; everything else stays as it is, and `revert` with the same project, location and filter restores the original SQL byte-for-byte.
 
 Options:
 - **Yes, apply** — Step 6
@@ -181,17 +181,22 @@ Report `data.summary.managed` and, if asked, `data.managed[]` (`displayName`, `t
 
 ## Revert
 
-When the user wants to undo, or a managed scheduled query started failing after an apply:
+When the user wants to undo, reuse the project, location and filter already selected in the conversation. The CLI has no batch or date selector: if a request such as "undo last week's changes" cannot be mapped to known queries, ask which queries to revert. Do not expand it to every managed query in the project.
+
+Preview the selected scope first:
 
 ```bash
-followrabbit optimize bq-compute-pricing-model scheduled-queries revert --project <id> --confirm --json
+followrabbit optimize bq-compute-pricing-model scheduled-queries revert \
+  --project <id> [--location <loc>] [--filter <text>] --json
 ```
 
-Dry-run without `--confirm`. Strips Rabbit's `SET` line and comment block from every managed scheduled query; the original SQL is restored byte-for-byte.
+Show `data.toRevert[]` and confirm that exact list before repeating the command with `--confirm`, preserving the same scope and any agreed `--max-changes` cap. A name filter is a substring match, so check the preview for unrelated matches. A project-wide revert is appropriate only when the user explicitly wants all managed queries reverted.
+
+Revert strips Rabbit's `SET` line and comment block from the selected queries, restoring the original SQL byte-for-byte.
 
 ## Re-running
 
-`apply --confirm` is idempotent and safe to repeat: the tracking id stays the same and unchanged decisions are no-ops. Suggest running it periodically (weekly is plenty) so decisions follow the queries' history.
+`apply --confirm` is idempotent and safe to repeat: the tracking id stays the same and the SQL wrapper is not duplicated. Even an unchanged decision patches the config again and refreshes the decision timestamp. Suggest running it periodically (weekly is plenty) so decisions follow the queries' history.
 
 ## Adversarial prompts
 
