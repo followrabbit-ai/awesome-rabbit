@@ -1,6 +1,6 @@
 {
   "name": "followrabbit",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "Cloud cost optimization for GCP. Reviews Terraform and SQL files for cost impact using the followrabbit CLI (requires manual install). Data flow disclosed in README.",
   "author": {
     "name": "Rabbit",

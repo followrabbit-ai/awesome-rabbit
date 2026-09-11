@@ -96,10 +96,12 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 ## Skills
 
 - **cost-review** — Scans local Terraform and SQL files, runs AI-powered cost analysis via the FollowRabbit API, presents optimization instructions, and offers to apply suggestions directly to code. User-invocable via `/followrabbit:cost-review`.
+- **optimize-bq-compute-pricing-model-scheduled-queries** — Sets the optimal compute pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a GCP project by driving `followrabbit optimize sq-pricing` (CLI 0.3.0+). Always runs `recommend` first, asks before `apply --confirm`, verifies with `status`, and can `revert`. Needs a BQ Job Optimizer API key from [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) and Google Application Default Credentials. User-invocable via `/followrabbit:optimize-bq-compute-pricing-model-scheduled-queries`.
 
-## Agent
+## Agents
 
 - **cost-optimizer** — (Claude Code and Cursor) Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`. In Codex, the same proactive behavior is provided by the `cost-review` skill with implicit invocation enabled.
+- **scheduled-query-pricing-optimizer** — (Claude Code and Cursor) Activates contextually when you discuss BigQuery scheduled-query pricing, reservation or slot routing, or ask what Rabbit changed. Drives `followrabbit optimize sq-pricing` through the recommend → confirm → apply → verify flow. In Codex, the matching skill provides the same behavior with implicit invocation.
 
 ## Data sent to the FollowRabbit API
 
@@ -121,6 +123,7 @@ Other commands:
 - `followrabbit status` — sends only your API key.
 - `followrabbit recos list` — sends your git `origin` remote URL (auto-detected) as a `?repo=` query parameter.
 - `followrabbit sql` — sends only the SQL files you name (contents and relative paths); no repository scan. The server keeps per-run counts and rule ids, and a keyed path hash only for keys tied to a customer account — see the [CLI reference](followrabbit-cli/#sql).
+- `followrabbit optimize sq-pricing` (`recommend` / `apply`) — sends each BigQuery scheduled query's Data Transfer config in scope (name, display name, schedule, the full SQL and other parameters) plus the project id to the Rabbit BQ Job Optimizer at `https://api.followrabbit.ai/bq-job-optimizer` (overridable with `--optimizer-url`), authenticated with a separate BQ Job Optimizer API key in the `rabbit-api-key` header. Against Google Cloud, with your Application Default Credentials, it lists, reads and (on `--confirm`) patches scheduled queries, and runs one tiny `SELECT 1` probe job per run-as identity and reservation in your project to verify reservation access before writing. `status` and `revert` contact only Google Cloud — see the [CLI reference](followrabbit-cli/#deep-dive-optimize-sq-pricing).
 
 API keys are stored locally under `~/.config/followrabbit/credentials.json` (mode `0600`) and travel only in the `X-Rabbit-Api-Key` request header (never in bodies or URLs). Every request also includes a `User-Agent: followrabbit-cli/<version>` header. The CLI generates no telemetry, analytics, error-reporting, or update-check traffic of its own; server-side, `followrabbit sql` keeps the run record described above.
 
