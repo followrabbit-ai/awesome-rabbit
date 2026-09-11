@@ -353,7 +353,7 @@ After a write phase the envelope's top-level `status` is `success`, `partial` (s
 
 ### Idempotency
 
-`apply --confirm` can be re-run at any time. The optimizer strips its own block, re-decides, and re-emits it with the **same tracking id**; if the decision is unchanged the patch is a no-op. The id stays with the scheduled query for its lifetime, which is what lets Rabbit attribute realised savings to the decision. Run it on a schedule (weekly is plenty) so decisions follow the query's history.
+`apply --confirm` can be re-run at any time. The optimizer strips its own block, re-decides, and re-emits it with the **same tracking id**. Even when the decision is unchanged, it patches the config again and refreshes the decision timestamp. The original SQL is preserved, with one leading `SET` and one trailing Rabbit block; repeated applies do not duplicate them. The id stays with the scheduled query for its lifetime, which is what lets Rabbit attribute realised savings to the decision. Run it on a schedule (weekly is plenty) so decisions follow the query's history.
 
 ### Limitation: scheduled queries created in the console
 
