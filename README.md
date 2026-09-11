@@ -23,7 +23,7 @@ This repository aims to provide tools, scripts, and code snippets for current an
   - The **Rabbit BQ Reverse Proxy** deployment package. A transparent reverse proxy that sits between your clients (Looker, dbt Cloud, Airflow, etc.) and the BigQuery REST API. It intercepts job submissions (`jobs.insert`, `jobs.query`), calls the Rabbit BQ Job Optimizer to automatically optimize job configuration (e.g. reservation routing), and streams everything else through unchanged with a fail-open design. Includes ready-to-use Terraform for Cloud Run deployment (pulling Rabbit's published container image) and a standalone performance test tool.
 
 - [followrabbit-cli](followrabbit-cli/):
-  - Reference for the `followrabbit` CLI — install (brew / npm / curl), authentication, every shipped command and flag, environment variables, exit codes, and troubleshooting. Verified against the shipped binary.
+  - Reference for the `followrabbit` CLI — install (brew / npm / curl), authentication, every shipped command and flag, environment variables, exit codes, and troubleshooting. Verified against the shipped binary. Includes the deep-dive on `optimize sq-pricing`, which sets the optimal pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a project using the Rabbit BQ Job Optimizer — the scheduled-query counterpart of the reverse proxy above.
 
 - [vpc-sc-helper](vpc-sc-helper/):
   - A read-only bash helper for customers whose VPC Service Controls perimeters block Rabbit's data loading. Given the violation id(s) from Rabbit's error reports, it finds the denial in your audit logs, names the exact perimeter, and prints the minimal ingress/egress rule plus dry-run-first `gcloud` commands to apply it.
