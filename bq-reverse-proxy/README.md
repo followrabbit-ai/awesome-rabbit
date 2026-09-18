@@ -28,9 +28,47 @@
 
 - **Zero client changes** — point your BigQuery endpoint to the proxy URL and everything works.
 - **Fail-open** — if the optimizer is unreachable or returns an error, the original query runs as-is. Your workloads are never blocked.
+- **Bounded optimizer response** — the proxy checks what the optimizer changed before forwarding it, and rejects anything outside the pricing surface. See [What the optimizer may change](#what-the-optimizer-may-change).
 - **Streaming** — responses are streamed, not buffered. Even large result sets pass through without extra memory overhead.
 - **No credential handling** — OAuth tokens from your clients pass through to BigQuery untouched. The proxy does not store, inspect, or refresh credentials, and its service account needs no BigQuery permissions.
 - **Stateless & single-tenant** — one deployment per organization. No datastore, no cache, no query logging.
+
+### What the optimizer may change
+
+The optimizer's answer **replaces your request body**, and BigQuery then runs it
+under *your* credentials. Since proxy image `v0.3.0` the proxy bounds what that
+answer is allowed to touch, so a compromised or simply buggy optimizer response
+cannot turn into a different job.
+
+Only the pricing surface may differ from what your client sent:
+
+| May change | Why |
+| --- | --- |
+| `configuration.reservation` | the routing decision itself |
+| `configuration.labels.rabbit-*` | attribution (optimization id, reservation hash, source project) |
+| the query text | statement-level routing, by insertion only — see below |
+
+Everything else is protected by omission: **destination table, write/create
+disposition, default dataset, `jobReference`, `dryRun`, and the load/copy/extract
+configurations**.
+
+The query text is checked by inverse rather than by allowlist. Statement-level
+routing rewrites by pure insertion — it splices `SET @@reservation = '...';` into
+your SQL and never deletes or alters your own text — so the proxy strips the
+injected statements and requires the remainder to equal your original byte for
+byte. With statement-level routing off, nothing is injected and the rule reduces
+to "the SQL must be identical". A response cannot claim a mode it was not granted,
+and it cannot remove a reservation you pinned yourself.
+
+A violation is treated like any other optimizer failure: your original request is
+forwarded unchanged and `bq_proxy_fail_open_total{reason="unexpected_body_change"}`
+increments. A bad response degrades to *not optimized*, never to *a different job*.
+
+**Redirects are not followed.** Go strips `Authorization` and `Cookie` across a
+cross-host redirect but not custom headers, so a `3xx` could have carried
+`rabbit-api-key` — and, on a 307/308, the request body — to the redirect target.
+All outbound clients now surface a `3xx` as a non-2xx and fail open instead
+(`v0.3.0`).
 
 ### Limitations
 
