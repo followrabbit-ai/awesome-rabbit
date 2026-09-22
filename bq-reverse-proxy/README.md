@@ -35,6 +35,7 @@
 ### Limitations
 
 - Only the global BigQuery endpoint (`https://bigquery.googleapis.com`) is supported. Regional endpoints (`bigquery.<region>.rep.googleapis.com`) are not supported yet.
+- Only the BigQuery REST API is proxied. The BigQuery Storage Read/Write API (`bigquerystorage.googleapis.com`, gRPC) is not — leave it on its default endpoint. Pointing it at the proxy cannot work (Cloud Run serves the container over HTTP/1.1 and the proxy does not forward gRPC), and drivers that fall back silently — the Simba JDBC/ODBC High-Throughput API, for one — degrade to paged REST downloads through the proxy, so large results get slower. The optimizer acts on job submission; it has nothing to gain from the bulk data path.
 
 ## Prerequisites
 
@@ -312,7 +313,7 @@ How each supported client points at the proxy, and which options it has for supp
 | Metabase | **Alternate hostname** field | ❌ | ✅ |
 | Lightdash | **BigQuery URL override** field | ❌ | ✅ |
 | `bq` CLI | `--api` flag | ❌ | ✅ |
-| JDBC (Simba driver) | connection URL / `rootUrl` property | ❌ | ✅ |
+| JDBC (Simba driver) | `PrivateServiceConnectUris=BIGQUERY=…` — see [JDBC](#jdbc-simba-driver) | ❌ | ✅ |
 
 Only custom code using the Java or Go SDK can send the header; every standard tool relies on a path alias for a dedicated key, or on the `default` key.
 
@@ -545,9 +546,21 @@ bq --api https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app query "SELECT 1"
 
 ### JDBC (Simba driver)
 
+The Simba driver ignores the host in the JDBC URL (verified with driver 1.8.0.1001); the REST endpoint is set with the `PrivateServiceConnectUris` property:
+
 ```
-jdbc:bigquery://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app:443;ProjectId=my-project;OAuthType=...
+jdbc:bigquery://https://www.googleapis.com/bigquery/v2:443;ProjectId=my-project;OAuthType=0;OAuthServiceAcctEmail=...;OAuthPvtKeyPath=...;PrivateServiceConnectUris=BIGQUERY=https://bigquery-rabbit.p.googleapis.com;
 ```
+
+The driver uses the BigQuery Storage Read API for large results by default (it forces the High-Throughput API on whenever `AllowLargeResults` is off, which is the default), so a misconfigured proxy setup does not fail — it silently turns fast streamed downloads into paged REST transfers. Measured with driver 1.8.0.1001 on a 1M-row / 50 MB result: 6–7 s direct, 6–7 s with the configuration below, 66–84 s when `OAUTH2` is also pointed at the proxy. Check the driver log at `LogLevel=4`: `Retrieving data using the Storage API` is the healthy path, `Fallback to using the standard API` means the setup is wrong.
+
+Three rules, all consequences of how the driver validates endpoints:
+
+1. **Set only `BIGQUERY`.** Leave `READ_API` and `OAUTH2` at their defaults. The Storage Read API is not proxied (see [Limitations](#limitations)), and the OAuth token endpoint has to stay at Google.
+2. **The proxy hostname must end in `.p.googleapis.com` and be served on port 443**, written without an explicit `:443`. The driver derives a "universe domain" from the `BIGQUERY` host — the part after `.p.`, or after the first label when there is no `.p.` — and refuses to connect unless it equals the credentials' universe domain, `googleapis.com`. A Cloud Run `*.run.app` URL or a corporate name such as `proxy.example.com` fails with `Failed to retrieve or validate universe domain`. Create a private DNS zone for `p.googleapis.com` in your VPC with a record such as `bigquery-rabbit.p.googleapis.com` pointing at an internal load balancer in front of the proxy, and issue that load balancer's certificate for the same name. This is the naming convention Google itself uses for Private Service Connect endpoints.
+
+   Do not work around the check by also setting `OAUTH2` to the proxy host. That makes the driver stamp your service-account credentials with the proxy's domain; the REST calls still work (the driver switches to self-signed JWTs), but the Storage Read API client rejects those credentials (`The configured universe domain (googleapis.com) does not match the universe domain found in the credentials`) and the driver silently falls back to paged REST downloads through the proxy for every large result. That workaround also only connects with a service-account key file that predates the `universe_domain` field; with a recently created key the driver refuses the connection outright (`Universe domain … does not match googleapis.com`), so a key rotation breaks it.
+3. **If you set `SSLTrustStore`, it replaces the JVM trust store for the driver's HTTPS calls**, so it must contain Google's root CAs as well as your internal CA — the OAuth token endpoint and the Storage Read API still go directly to Google. A store holding only the internal CA fails with `PKIX path building failed` on the token fetch.
 
 ### Java (google-cloud-bigquery)
 
