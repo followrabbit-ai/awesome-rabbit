@@ -2,7 +2,7 @@
 
 import pytest
 
-from rabbit_assessment.categories import UNITS, build_numbers
+from rabbit_assessment.categories import UNITS, build_literals, build_numbers
 from rabbit_assessment.config import PricingConfig
 from rabbit_assessment.sql import (
     SqlRenderError,
@@ -20,10 +20,45 @@ def test_every_unit_template_renders():
             project_id="my-project-123",
             location="US",
             numbers=build_numbers(unit.name, 30, pricing),
+            literals=build_literals(unit.name, pricing),
         )
         assert "my-project-123" in sql
         assert "region-us" in sql
         assert "${" not in sql  # all placeholders substituted
+
+
+def test_storage_template_uses_configured_default_model():
+    # Default is LOGICAL.
+    sql = render(
+        "storage_billing_model.sql",
+        project_id="my-project-123",
+        location="US",
+        numbers=build_numbers("storage_billing_model", 30, PricingConfig()),
+        literals=build_literals("storage_billing_model", PricingConfig()),
+    )
+    assert "COALESCE(m.storage_billing_model, 'LOGICAL')" in sql
+
+    # Configurable to PHYSICAL.
+    physical = PricingConfig(default_storage_billing_model="PHYSICAL")
+    sql = render(
+        "storage_billing_model.sql",
+        project_id="my-project-123",
+        location="US",
+        numbers=build_numbers("storage_billing_model", 30, physical),
+        literals=build_literals("storage_billing_model", physical),
+    )
+    assert "COALESCE(m.storage_billing_model, 'PHYSICAL')" in sql
+
+
+def test_render_rejects_invalid_literal():
+    with pytest.raises(SqlRenderError):
+        render(
+            "storage_billing_model.sql",
+            project_id="my-project-123",
+            location="US",
+            numbers=build_numbers("storage_billing_model", 30, PricingConfig()),
+            literals={"default_storage_billing_model": "LOGICAL'; DROP TABLE x;--"},
+        )
 
 
 def test_normalize_location():

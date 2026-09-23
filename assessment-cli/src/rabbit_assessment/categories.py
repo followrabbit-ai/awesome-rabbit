@@ -53,3 +53,10 @@ def build_numbers(
     if unit_name in ("reservations", "capacity_commitments"):
         return {}
     raise KeyError(f"Unknown collection unit: {unit_name}")
+
+
+def build_literals(unit_name: str, pricing: PricingConfig) -> dict[str, str]:
+    """The non-numeric literal template parameters a given template needs."""
+    if unit_name == "storage_billing_model":
+        return {"default_storage_billing_model": pricing.default_storage_billing_model}
+    return {}

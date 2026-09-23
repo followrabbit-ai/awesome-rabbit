@@ -68,6 +68,7 @@ class _Aggregates:
 
         failed_rows = _read_csv(run_dir / "failed_jobs_general.csv")
         self.failed_cost = sum(_to_float(r.get("cost")) for r in failed_rows)
+        self.failed_slot_hours = sum(_to_float(r.get("slot_hours")) for r in failed_rows)
 
         capacity_rows = _read_csv(run_dir / "failed_jobs_capacity.csv")
         self.capacity_slot_hours = sum(_to_float(r.get("slot_hours")) for r in capacity_rows)
@@ -104,12 +105,16 @@ def _coverage(manifest: dict[str, Any], errors: list[dict[str, str]]) -> list[di
     projects = manifest.get("projects", [])
     locations = manifest.get("locations", [])
     attempted = max(len(projects) * len(locations), 0)
+    # Only the categories actually selected for this run were attempted.
+    selected = set(manifest.get("units") or [u.name for u in UNITS])
     errors_by_unit: dict[str, list[dict[str, str]]] = defaultdict(list)
     for error in errors:
         errors_by_unit[error.get("category", "")].append(error)
 
     rows: list[dict[str, Any]] = []
     for unit in UNITS:
+        if unit.name not in selected:
+            continue
         unit_errors = errors_by_unit.get(unit.name, [])
         succeeded = attempted - len(unit_errors)
         reason = ""
@@ -165,6 +170,12 @@ def generate_report(run_dir: Path) -> Path:
             f"| {cov['skipped']} | {row_counts.get(unit.name, 0)} | {cov['reason'] or '-'} |"
         )
     lines.append("")
+    if errors:
+        lines.append(
+            f"{len(errors)} unit(s) skipped. Short index: `errors.csv`. "
+            "Full error text and the failing SQL for each: `query-errors.log`. "
+            "Run log: `run.log`.\n"
+        )
 
     # --- Savings summary -------------------------------------------------
     # When the currency is USD the local and USD columns are identical, so a
@@ -206,15 +217,30 @@ def generate_report(run_dir: Path) -> Path:
     )
     lines.append("")
     lines.append(
-        f"> Capacity-related failed jobs additionally burned "
-        f"{_fmt(agg.capacity_slot_hours)} slot-hours "
-        f"(~{cur} {_fmt(agg.capacity_cost)} / USD {_fmt(agg.usd(agg.capacity_cost))}).\n"
+        "> Failed-job slots over the window — capacity-related failures are a "
+        "**subset** of all failed jobs (not additional):"
+    )
+    lines.append(f"> - all failed jobs: {_fmt(agg.failed_slot_hours)} slot-hours")
+    lines.append(
+        f"> - of which capacity/resource-related: {_fmt(agg.capacity_slot_hours)} "
+        f"slot-hours ({cur} {_fmt(agg.capacity_cost)} / "
+        f"USD {_fmt(agg.usd(agg.capacity_cost))})\n"
     )
 
     # --- Per-category detail --------------------------------------------
+    pricing = manifest.get("pricing", {})
+    storage_default = next(
+        (p.get("default_storage_billing_model", "LOGICAL") for p in pricing.values()),
+        "LOGICAL",
+    )
     lines.append("## Collected Data\n")
     for unit in UNITS:
         lines.append(f"### {unit.title}\n")
+        if unit.name == "storage_billing_model":
+            lines.append(
+                f"_Datasets with no explicit `storage_billing_model` option are "
+                f"assumed **{storage_default}**._\n"
+            )
         rows = _read_csv(run_dir / f"{unit.name}.csv")
         if not rows:
             lines.append("_No rows collected._\n")
@@ -293,7 +319,8 @@ def print_console_summary(run_dir: Path, console: Console) -> None:
     console.print(table)
 
     attempted = len(manifest.get("projects", [])) * len(manifest.get("locations", []))
-    total_units = attempted * len(UNITS)
+    selected_units = manifest.get("units") or [u.name for u in UNITS]
+    total_units = attempted * len(selected_units)
     skipped = len(errors)
     succeeded = total_units - skipped
     style = "green" if skipped == 0 else "yellow"

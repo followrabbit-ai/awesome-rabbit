@@ -7,6 +7,9 @@ SELECT
 FROM `${project_id}`.`region-${region}`.INFORMATION_SCHEMA.JOBS_BY_PROJECT
 WHERE error_result IS NOT NULL
   AND error_result.reason IS NOT NULL
+  -- Top-level jobs only: a SCRIPT's total_slot_ms already includes every
+  -- child statement, so counting parent + children double-counts the slots.
+  AND parent_job_id IS NULL
   AND creation_time >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL ${lookback_days} DAY)
 GROUP BY ALL
 ORDER BY slot_hours DESC, error_result.reason;
