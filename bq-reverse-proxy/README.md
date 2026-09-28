@@ -92,6 +92,20 @@ module "bq_reverse_proxy" {
 }
 ```
 
+> **Pin the module for production.** The `source` above tracks the default
+> branch, so `terraform init` picks up module changes as they land. Note this
+> is the opposite of how the image behaves: `image_tag = "latest"` is resolved
+> to a digest when a revision is created and will **not** move on its own,
+> whereas the module is re-resolved on every `init`.
+>
+> If you manage change explicitly, pin the module to a commit and bump it
+> deliberately — the same discipline as pinning `image_tag` to a release tag
+> rather than `latest`:
+>
+> ```hcl
+> source = "git::https://github.com/followrabbit-ai/awesome-rabbit.git//bq-reverse-proxy/terraform?ref=<commit-sha>"
+> ```
+
 ### Step 1: Configure Variables
 
 ```bash
@@ -242,7 +256,7 @@ Protect the endpoint at the network layer instead:
 | **Internal + Load Balancer** | `allow_unauthenticated = true`, `ingress = "INGRESS_TRAFFIC_INTERNAL_LOAD_BALANCER"` | You want to front the proxy with your own Google Cloud Load Balancer (custom domain, Cloud Armor allowlists). |
 | **Public** | `allow_unauthenticated = true`, `ingress = "INGRESS_TRAFFIC_ALL"` | You use SaaS clients that connect from outside your network (Looker, dbt Cloud). |
 
-Orthogonal to all three: `default_uri_disabled = true` turns off public resolution of the built-in `*.run.app` hostname, so the service is only reachable through an entry point you control. `ingress` decides *where traffic may come from*; this decides *whether the default hostname exists at all*. Pair it with the load-balancer model when policy forbids a Google-assigned public hostname. The `service_url` output still reports that URI, but it will no longer resolve — point clients at your own endpoint.
+Orthogonal to all three: `default_uri_disabled = true` turns off public resolution of the built-in `*.run.app` hostname, so the service is only reachable through an entry point you control. `ingress` decides *where traffic may come from*; this decides *whether the default hostname exists at all*. Pair it with the load-balancer model when policy forbids a Google-assigned public hostname. Note that Cloud Run then reports no URI for the service at all, so the **`service_url` output is an empty string** — point clients at your own endpoint, and don't wire `service_url` into anything downstream that expects a URL.
 
 For the **public** model, note what exposure actually means: the proxy is stateless and holds no data — an anonymous caller without a valid BigQuery OAuth token gets errors from BigQuery, exactly as if they hit `bigquery.googleapis.com` directly. If you want to additionally restrict which networks can reach a public endpoint, put it behind a load balancer with [Cloud Armor](https://cloud.google.com/armor) IP allowlists.
 
@@ -636,6 +650,7 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `request_timeout` | No | `10m` | Upstream request timeout (Go duration) |
 | `bq_job_optimizer_timeout` | No | `2s` | Optimizer call timeout (Go duration); fail-open on expiry |
 | `max_body_bytes` | No | `1048576` | Max body size buffered for optimization; larger bodies pass through untouched |
+| `enable_pool_reroute` | No | `false` | Move jobs the optimizer places in an on-demand pool project, and resolve the client's job-scoped calls to wherever the job ran. Requires `bq_job_optimizer_url` + a **configured** API key (see below), and proxy image >= `v0.3.0` |
 | `vpc_connector` | No | `null` | VPC access connector ID. Mutually exclusive with `vpc_network` |
 | `vpc_network` | No | `null` | Direct VPC egress network, `projects/<host>/global/networks/<name>`. No connector instances needed |
 | `vpc_subnetwork` | No | `null` | Direct VPC egress subnetwork, `projects/<host>/regions/<region>/subnetworks/<name>`. Region must match the service. Required with `vpc_network` |
@@ -660,9 +675,50 @@ These are the environment variables the proxy container reads. The Terraform con
 | `REQUEST_TIMEOUT` | `10m` | `request_timeout` | Upstream request timeout |
 | `MAX_BODY_BYTES` | `1048576` | `max_body_bytes` | Max buffered body size |
 | `LOG_LEVEL` | `info` | `log_level` | Log verbosity |
+| `ENABLE_POOL_REROUTE` | _(unset = off)_ | `enable_pool_reroute` | On-demand pool rerouting. Pool projects are read from the optimizer, not configured here |
+
+### Pool rerouting needs a key of its own
+
+Turning on `enable_pool_reroute` requires an API key the proxy can use **on its
+own behalf**, because it reads the pool project list from the optimizer on a
+background refresh — not on the back of a client request.
+
+This catches out a deployment where every client sends its own `rabbit-api-key`
+header. That works fine for per-request optimization, so it can look like the
+proxy "has" a key. The background refresh has no incoming request to take one
+from, so with the flag on and nothing configured the proxy refuses to start:
+
+```
+failed to load config: ENABLE_POOL_REROUTE=true requires an API key (DEFAULT_API_KEY or API_KEY_ROUTES)
+```
+
+Supply one through `api_keys` (a `default` alias, or any route alias) or the
+Secret Manager options.
+
+> **A secret that exists but is empty passes the plan.** The module's
+> precondition checks that a key mechanism is *configured*; Terraform cannot
+> read the secret's value. An empty secret therefore plans cleanly and fails
+> when the container starts — the revision never becomes ready, and traffic
+> stays on the previous one.
+
+The pool list is **per-tenant**: use a key belonging to the tenant whose pool
+the jobs should land in, since the proxy allowlists only that tenant's pool
+projects.
 
 
 ## Updating the Proxy
+
+> **Note (empty API keys).** An API key given as an empty string is now treated
+> as *no key*, the same as omitting it — previously it rendered `DEFAULT_API_KEY`
+> as an empty environment variable, which looked configured but could not be
+> used. Blank-valued entries in `api_keys` / `api_key_routes` are dropped for the
+> same reason. If you were passing an empty value (easy to do when wiring a key
+> from a CI secret that is not set — GitHub Actions substitutes `""`), your next
+> `terraform apply` will create a new revision that simply omits the variable.
+> Behaviour is unchanged; the proxy treated both as no key. What does change:
+> `enable_pool_reroute = true` with only blank keys now fails at plan time with
+> a clear message instead of producing a revision that cannot start.
+
 
 By default this package deploys the `latest` release tag. Because the tag itself doesn't change between releases, a plain `terraform apply` sees no diff — force a new revision to pull the newest image:
 

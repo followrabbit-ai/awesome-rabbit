@@ -4,7 +4,7 @@ output "service_name" {
 }
 
 output "service_url" {
-  description = "HTTPS URL of the proxy. Point BigQuery clients' root URL at this (replacing https://bigquery.googleapis.com). With default_uri_disabled = true this default URI no longer resolves — use your own endpoint instead."
+  description = "HTTPS URL of the proxy. Point BigQuery clients' root URL at this (replacing https://bigquery.googleapis.com). Empty when default_uri_disabled = true — Cloud Run reports no URI for the service then, so use your own endpoint instead."
   value       = google_cloud_run_v2_service.proxy.uri
 }
 

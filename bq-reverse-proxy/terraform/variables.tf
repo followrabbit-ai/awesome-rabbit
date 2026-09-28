@@ -345,8 +345,10 @@ service can only be reached through an entry point you control (a load
 balancer, or another internal address). Independent of `ingress`: ingress
 controls where traffic may come from, this removes the built-in hostname.
 
-The `service_url` output stays populated with the (now unresolvable) default
-URI — point clients at your own endpoint instead.
+With this on, Cloud Run stops reporting a URI for the service, so the
+module's `service_url` output is an empty string — point clients at your own
+endpoint, and don't feed `service_url` into anything downstream that expects
+a URL.
 
 Requires google provider >= 7.7.0 (the release that promoted this field out
 of beta), which is this module's minimum anyway.
@@ -440,6 +442,46 @@ variable "labels" {
   type        = map(string)
   description = "Labels applied to every resource this module creates."
   default     = {}
+}
+
+variable "enable_pool_reroute" {
+  type        = bool
+  description = <<-EOT
+    Enable on-demand pool rerouting (sets ENABLE_POOL_REROUTE). When the
+    bq-job-optimizer places a job in an on-demand pool project, the proxy
+    moves it there — rewriting the request path — and transparently resolves
+    the client's later job-scoped calls (jobs.get, getQueryResults,
+    jobs.cancel, jobs.delete) to wherever the job actually ran.
+
+    Off by default; leaving it off keeps the response path byte-for-byte
+    unchanged. Every identity whose jobs may be routed needs bigquery.jobUser
+    on each pool project.
+
+    Requires bq_job_optimizer_url AND an API key the proxy can use on its own
+    behalf — the pool project list is read from the optimizer (refreshed in the
+    background), not configured here.
+
+    Note the proxy needs a key CONFIGURED, not merely present on incoming
+    requests. A deployment where every client sends its own `rabbit-api-key`
+    header works fine for per-request optimization, but the background refresh
+    has no incoming request to take a key from. With the flag on and no
+    configured key the proxy exits at startup:
+
+      failed to load config: ENABLE_POOL_REROUTE=true requires an API key
+      (DEFAULT_API_KEY or API_KEY_ROUTES)
+
+    Supply one via `api_keys` (a "default" alias, or any route alias), or via
+    the Secret Manager options. Beware a secret that EXISTS but holds an empty
+    value: the plan-time check below sees a secret configured and passes, and
+    the failure only appears when the container starts.
+
+    The pool list is per-tenant, so use a key belonging to the tenant whose
+    pool the jobs should land in; the proxy allowlists only that tenant'"'"'s
+    pool projects.
+
+    Needs proxy image >= v0.3.0.
+  EOT
+  default     = false
 }
 
 variable "extra_env" {

@@ -31,8 +31,22 @@ locals {
   # Plain-text key sources: the unified api_keys map ("default" alias =
   # fallback key) or the deprecated default_api_key / api_key_routes pair.
   # Split in Terraform so plain mode works with any proxy image version.
-  plain_default_key = var.default_api_key != null ? var.default_api_key : lookup(var.api_keys, "default", null)
-  plain_routes      = length(var.api_key_routes) > 0 ? var.api_key_routes : { for alias, key in var.api_keys : alias => key if alias != "default" }
+  # An empty string and null both mean "no key" — and "" turns up more often
+  # than null. GitHub Actions substitutes an empty string for an unset secret,
+  # so a caller wiring TF_VAR_default_api_key from a secret that does not exist
+  # passes "" here. Treated as a configured key, that rendered DEFAULT_API_KEY
+  # as an empty env var: indistinguishable from a real key by inspection, and
+  # enough to satisfy the enable_pool_reroute precondition below while leaving
+  # the proxy unable to start. Normalise to null so every consumer — the env
+  # blocks and that precondition — sees "no key" and says so.
+  # trimspace: a key pasted with a trailing newline is the same mistake.
+  default_key_raw   = var.default_api_key != null ? trimspace(var.default_api_key) : trimspace(lookup(var.api_keys, "default", ""))
+  plain_default_key = local.default_key_raw != "" ? local.default_key_raw : null
+
+  # Same for routes: drop blank-valued aliases before deciding whether any
+  # routes exist, so a map of empty keys is not mistaken for a configured one.
+  routes_raw   = length(var.api_key_routes) > 0 ? var.api_key_routes : { for alias, key in var.api_keys : alias => key if alias != "default" }
+  plain_routes = { for alias, key in local.routes_raw : alias => key if trimspace(key) != "" }
 
   # Secret Manager source for the whole key map: the module-created
   # secret's id, a caller-supplied secret reference, or null (plain env).
@@ -232,6 +246,19 @@ resource "google_cloud_run_v2_service" "proxy" {
         }
       }
 
+      # Optional: on-demand pool rerouting. Emitted only when enabled, so a
+      # deployment that leaves it off keeps a byte-identical revision spec.
+      # The proxy defaults it to off, and refuses to start with it on unless
+      # it has both an optimizer URL and an API key — see the precondition
+      # below and the api_keys/default_api_key variables.
+      dynamic "env" {
+        for_each = var.enable_pool_reroute ? [1] : []
+        content {
+          name  = "ENABLE_POOL_REROUTE"
+          value = "true"
+        }
+      }
+
       # Optional: per-workload optimizer configs. Plain env — the config is
       # not sensitive and both proxy and optimizer log it for attribution.
       dynamic "env" {
@@ -282,6 +309,21 @@ resource "google_cloud_run_v2_service" "proxy" {
         nonsensitive(var.default_api_key != null || length(var.api_key_routes) > 0),
       ] : set if set]) <= 1
       error_message = "Configure the API keys through exactly one mechanism: api_keys, create_api_keys_secret, api_keys_secret, or the deprecated default_api_key/api_key_routes pair."
+    }
+
+    # Pool rerouting needs the optimizer: the proxy asks it where to place a
+    # job, and reads the pool project list from it (GET /v1/pool-projects).
+    # The proxy refuses to start without both, which surfaces here as a
+    # revision that never passes its health check and a deploy that times out
+    # — catch it at plan time with a message that says what is missing.
+    precondition {
+      condition = !var.enable_pool_reroute || (var.bq_job_optimizer_url != "" && length([for set in [
+        nonsensitive(length(var.api_keys) > 0),
+        var.create_api_keys_secret,
+        var.api_keys_secret != null,
+        nonsensitive(var.default_api_key != null || length(var.api_key_routes) > 0),
+      ] : set if set]) >= 1)
+      error_message = "enable_pool_reroute requires bq_job_optimizer_url and an API key (api_keys, create_api_keys_secret, api_keys_secret, or default_api_key/api_key_routes). Without both the proxy exits at startup."
     }
 
     # Cloud Run rejects these combinations with an opaque API error; catch
