@@ -422,10 +422,11 @@ Destination-table queries the CLI will not convert (all reported as skipped with
 | `destination_not_a_table` | The destination is a view, snapshot or external table. |
 | `destination_write_disposition_missing` | The config has no write preference. BigQuery itself fails such a scheduled query. |
 | `destination_schema_unresolved` | The dry run of your SQL failed (the CLI's credentials lack access to a referenced table, or the SQL has an error), or the query is not a plain SELECT. |
-| `destination_schema_mismatch` | The result columns differ from the table's (`WRITE_TRUNCATE` needs an exact match, `WRITE_APPEND` needs every result column present with the same type). |
+| `destination_schema_mismatch` | The result columns differ from the table's (`WRITE_TRUNCATE` needs an exact match including modes, `WRITE_APPEND` needs every result column present with the same type). STRUCT columns must have their fields in the same order, because `INSERT` assigns struct fields by position. |
+| `destination_script_rejected` | BigQuery rejected the rewritten script at dry run, run with the CLI's own credentials; the `detail` carries BigQuery's message. Most often the CLI identity lacks write access to the destination table, or the customer SQL ends with a `/* */` or `#` comment after its `;`. |
 | `destination_wrapper_modified` | Someone edited the script the CLI wrote; restore it by hand or recreate the scheduled query. |
 
-Before writing, `apply --confirm` dry-runs each rewritten script; a failure is reported for that scheduled query alone and nothing is written for it.
+Each rewritten script is dry-run during planning, so `recommend` already shows a `destination_script_rejected` skip where BigQuery would refuse it.
 
 ### Troubleshooting
 
@@ -445,7 +446,7 @@ Before writing, `apply --confirm` dry-runs each rewritten script; a failure is r
 
 **A managed query fails with `destinationTable cannot be set for scripts`** — it was managed by a CLI older than 0.4.0 while carrying a destination table. `revert --confirm` restores it; re-apply with 0.4.0 or newer converts it properly.
 
-**exit 7, `the rewritten destination-table script failed validation`** — BigQuery rejected the converted script at dry run; the message carries BigQuery's reason. Nothing was written for that scheduled query.
+**A destination-table query is skipped with `destination_script_rejected`** — BigQuery refused the converted script at dry run; the `detail` carries BigQuery's reason. Usually the identity running the CLI has no write access to the destination table: run the CLI as the scheduled query's owner, or grant it `bigquery.dataEditor` on the dataset.
 
 **exit 7 or 6, `changed since the plan was computed`** — someone edited that scheduled query between the plan and the write, so the CLI did not touch it. Re-run; the new plan is computed against the current SQL.
 
