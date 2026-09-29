@@ -231,6 +231,33 @@ Run `followrabbit completion --help` for per-shell load instructions.
 
 Canonical name: `followrabbit optimize bq-compute-pricing-model scheduled-queries <verb>`. `optimize sq-pricing <verb>` is an alias; JSON output always reports the canonical name in `command`.
 
+### In plain language
+
+**The problem it solves.** BigQuery charges for a query in one of two ways, and you choose which:
+
+| Pricing mode | How you pay | When it is cheaper |
+|---|---|---|
+| **On-demand** | Per amount of data the query reads. Nothing else to set up. | Small or infrequent queries, or queries that read little data. |
+| **Slot reservation** (also called capacity or editions pricing) | Your organisation buys a pool of compute capacity ("slots") and pays for that capacity, not for the data read. | Big or frequent queries, whose data volume would cost more on-demand than their share of the pool. |
+
+Most companies have both: a reservation for the heavy work and on-demand for everything else. Every query, including every scheduled query, then lands in one or the other, and the wrong choice quietly costs money on every run. Rabbit looks at each scheduled query's run history, works out which mode is cheaper for it, and switches it over.
+
+**How the switch works.** BigQuery lets a query pick its pricing mode with one line placed before the SQL:
+
+```sql
+SET @@reservation = 'projects/<admin>/locations/<region>/reservations/<name>';  -- use this reservation
+SET @@reservation = 'none';                                                       -- force on-demand
+```
+
+Without that line the query uses whatever the project is assigned to by default. This command adds the right line to the top of each scheduled query and a small comment block at the bottom so Rabbit can track the decision. Your own SQL is not changed, and `revert` removes both again.
+
+**Who has to run it.** A scheduled query is owned by the account that created it, and it runs as that account. Google Cloud has no permission that lets anyone else, not even a project owner, change another person's scheduled query. This means:
+
+- If you created the scheduled query in the BigQuery console under your own Google account, **you** have to run this command, signed in as yourself (`gcloud auth application-default login`). A colleague or an administrator cannot do it for you.
+- If the scheduled query runs as a **service account**, anyone who can edit scheduled queries in the project (`bigquery.transfers.update`, included in `roles/bigquery.admin`) can run it. The service account itself needs permission to use the chosen reservation: `bigquery.reservations.use`, granted on the project that administers the reservation (`roles/bigquery.resourceEditor` includes it). Optionally, give the person running the command `roles/iam.serviceAccountTokenCreator` on that service account so the CLI can confirm the access before writing.
+
+Moving user-owned scheduled queries to a service account is the usual way to let a team manage them centrally; see [the console limitation](#limitation-scheduled-queries-created-in-the-console) below. The rest of this section is the detailed reference.
+
 ### What it does
 
 A scheduled query is a persistent BigQuery Data Transfer Service config, so it never passes through the [reverse proxy](../bq-reverse-proxy/) and cannot be routed at submission time. This command applies the same optimizer decision to the stored config instead. For every scheduled query in scope:
