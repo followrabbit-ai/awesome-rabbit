@@ -203,7 +203,7 @@ followrabbit recos list --type rightsizing --status open
 
 ### `optimize bq-compute-pricing-model scheduled-queries`
 
-Set the optimal compute pricing model — slot reservation or on-demand — on every BigQuery scheduled query in a project, using the Rabbit BQ Job Optimizer. `optimize sq-pricing` is the short spelling of the same command. Requires **0.3.0** or newer.
+Set the optimal compute pricing model — slot reservation or on-demand — on every BigQuery scheduled query in a project, using the Rabbit BQ Job Optimizer. `optimize sq-pricing` is the short spelling of the same command. Requires **0.3.0** or newer; destination-table scheduled queries need **0.4.0**.
 
 ```bash
 followrabbit optimize sq-pricing recommend --project <id>            # read-only plan
@@ -255,6 +255,8 @@ Without that line the query uses whatever the project is assigned to by default.
 
 - If you created the scheduled query in the BigQuery console under your own Google account, **you** have to run this command, signed in as yourself (`gcloud auth application-default login`). A colleague or an administrator cannot do it for you.
 - If the scheduled query runs as a **service account**, anyone who can edit scheduled queries in the project (`bigquery.transfers.update`, included in `roles/bigquery.admin`) can run it. The service account itself needs permission to use the chosen reservation: `bigquery.reservations.use`, granted on the project that administers the reservation (`roles/bigquery.resourceEditor` includes it). Optionally, give the person running the command `roles/iam.serviceAccountTokenCreator` on that service account so the CLI can confirm the access before writing.
+
+**Scheduled queries that write to a table.** Many scheduled queries save their result into a **destination table** set in the scheduled-query settings (the "Destination for query results" box in the console). BigQuery does not allow that setting together with the `SET` line, so from CLI **0.4.0** the command rewrites such a query into a small script that writes the same table itself: your SELECT stays exactly as you wrote it, and the tool puts an `INSERT INTO your_table` in front of it, preceded by a `TRUNCATE TABLE your_table` when your setting was "Overwrite table". The table keeps its name, columns, partitioning, labels and description, and it is filled the same way it is today; only the mechanism changes from a setting on the schedule to two statements in the SQL. `revert` puts the original setting back. Queries whose table name changes per run (for example `results_{run_date}`) are left alone and reported as skipped. Details: [destination tables](#destination-tables).
 
 Moving user-owned scheduled queries to a service account is the usual way to let a team manage them centrally; see [the console limitation](#limitation-scheduled-queries-created-in-the-console) below. The rest of this section is the detailed reference.
 
@@ -398,6 +400,82 @@ The CLI appends the remediation to that error. Your options, in order of prefere
 
 Because each scheduled query is patched independently, an owner mismatch on one does not stop the others: the command exits 7 and lists the failures.
 
+### Destination tables
+
+A SELECT scheduled query may write its result to a destination table: `destination_table_name_template` and `write_disposition` on the config, plus the top-level destination dataset. BigQuery rejects a destination table on a multi-statement query, and the `SET @@reservation` line makes the query one, so the CLI (0.4.0+) converts such a query into a script that writes the table itself and clears the destination settings on the config.
+
+**What the rewrite looks like.** Take a scheduled query with this SQL and destination `reporting.daily_orders`, write preference `WRITE_TRUNCATE`:
+
+```sql
+SELECT order_date, region, SUM(amount) AS revenue
+FROM `shop.orders`
+GROUP BY 1, 2;
+```
+
+After `apply --confirm` the config has no destination settings any more and its SQL is:
+
+```sql
+SET @@reservation = 'projects/<admin>/locations/<region>/reservations/<name>';
+BEGIN TRANSACTION;
+TRUNCATE TABLE `my-project.reporting.daily_orders`;
+INSERT INTO `my-project.reporting.daily_orders` (`order_date`, `region`, `revenue`)
+-- rabbit-destination-query-begin
+SELECT order_date, region, SUM(amount) AS revenue
+FROM `shop.orders`
+GROUP BY 1, 2
+-- rabbit-destination-query-end
+;
+COMMIT TRANSACTION;
+
+-- BEGIN rabbit-bq-scheduled — DO NOT EDIT
+-- rabbit-job-optimization-id: 7f3e1234-5678-90ab-cdef-1234567890ab
+-- rabbit-original-reservation-id: none
+-- rabbit-optimized-reservation-id: projects/<admin>/locations/<region>/reservations/<name>
+-- rabbit-decision-reason: slot_based_cheaper_assigned_to_reservation
+-- rabbit-decision-ts: 2026-09-29T12:00:00.000Z
+-- rabbit-destination-dataset: reporting
+-- rabbit-destination-table: daily_orders
+-- rabbit-destination-write-disposition: WRITE_TRUNCATE
+-- rabbit-destination-query-head: ""
+-- rabbit-destination-query-tail: ";\n"
+-- END rabbit-bq-scheduled
+```
+
+With `WRITE_APPEND` there is no transaction and no `TRUNCATE`, only the `INSERT INTO … (columns)` in front of your SELECT. Your SELECT is copied verbatim between the two marker comments; the only edit is that its terminating `;` (and anything after it) is moved to the fence as `rabbit-destination-query-tail`, because the script supplies its own terminator. The column list comes from a dry run of your SELECT.
+
+**Why this is equivalent to what the Data Transfer Service does.** A destination table on a scheduled query is a query job with `destinationTable` and `writeDisposition` set. Measured against a real table carrying partitioning, clustering, labels, a description, expiration and a required-partition-filter:
+
+| Behaviour of the scheduled query | Data Transfer Service, `WRITE_TRUNCATE` | Rewritten script | Data Transfer Service, `WRITE_APPEND` | Rewritten script |
+|---|---|---|---|---|
+| Table identity, description, labels, expiration, partitioning, clustering, partition filter | kept | kept (`TRUNCATE` empties the table in place) | kept | kept |
+| Rows | replaced | replaced | appended | appended |
+| Column matching | by name | by name, through the explicit column list | by name | by name, through the explicit column list |
+| Atomicity | one job | one transaction: a failing `INSERT` rolls the `TRUNCATE` back, verified | one job | one statement |
+| Cost of the write | none | none: `TRUNCATE TABLE` is free, the `INSERT` scans only what your SELECT scans | none | none |
+| `@run_date` / `@run_time` | work | work inside the script, verified | work | work |
+| Schema when your SELECT gains or loses a column | table reshaped silently | **run fails, previous rows stay** | run fails | run fails |
+
+`CREATE OR REPLACE TABLE … AS SELECT` was considered and rejected for the truncate case: it drops every piece of table metadata listed above and refuses outright when the table's partition spec is not restated. `TRUNCATE` plus `INSERT` inside a transaction keeps the table you configured and only touches its rows.
+
+The one row where behaviour differs is schema drift under `WRITE_TRUNCATE`: today a new column in your SELECT silently reshapes the table, after conversion that run fails with a clear column or type error and the table keeps its previous contents. To keep this honest, `apply` refuses to convert a query whose result columns do not already match the table (`destination_schema_mismatch`), so a converted query is always consistent on day one; if the schema later drifts, `revert --confirm` puts the Data Transfer Service behaviour back.
+
+**Bookkeeping.** The original destination settings and the trimmed terminator are recorded as `-- rabbit-destination-*` lines inside the fence; `revert` restores the SQL, the params and the destination dataset byte for byte, and re-running `apply` round-trips through your original SQL so the optimizer decides on the query you wrote and the tracking id is kept. The plan and `status` show the conversion as `destination: {dataset, table, writeDisposition, rewrite: truncate_insert | insert, columns}`.
+
+Destination-table queries the CLI will not convert (all reported as skipped with a `detail`):
+
+| `reason` | Meaning |
+|---|---|
+| `destination_table_template_unsupported` | The table name contains `{run_date}`-style templating or a `$` partition decorator. Leave the query on its current pricing model, or make the table name fixed. |
+| `destination_table_missing` | The table does not exist yet; the Data Transfer Service would create it on the next run, a script cannot. Run the scheduled query once, then apply. |
+| `destination_not_a_table` | The destination is a view, snapshot or external table. |
+| `destination_write_disposition_missing` | The config has no write preference. BigQuery itself fails such a scheduled query. |
+| `destination_schema_unresolved` | The dry run of your SQL failed (the CLI's credentials lack access to a referenced table, or the SQL has an error), or the query is not a plain SELECT. |
+| `destination_schema_mismatch` | The result columns differ from the table's (`WRITE_TRUNCATE` needs an exact match including modes, `WRITE_APPEND` needs every result column present with the same type). STRUCT columns must have their fields in the same order, because `INSERT` assigns struct fields by position. |
+| `destination_script_rejected` | BigQuery rejected the rewritten script at dry run, run with the CLI's own credentials; the `detail` carries BigQuery's message. Most often the CLI identity lacks write access to the destination table, or the customer SQL ends with a `/* */` or `#` comment after its `;`. |
+| `destination_wrapper_modified` | Someone edited the script the CLI wrote; restore it by hand or recreate the scheduled query. |
+
+Each rewritten script is dry-run during planning, so `recommend` already shows a `destination_script_rejected` skip where BigQuery would refuse it.
+
 ### Troubleshooting
 
 **exit 2, `no optimizer API key`** — store one with `followrabbit auth login --optimizer-key <KEY>`, or set `RABBIT_OPTIMIZER_API_KEY`. The main CLI key does not work here.
@@ -413,6 +491,10 @@ Because each scheduled query is patched independently, an owner mismatch on one 
 **`iam.status: unverified`** — the CLI could not impersonate the run-as service account (grant yourself `roles/iam.serviceAccountTokenCreator` on it), or the owner is another user. Check that identity's access yourself before relying on the next run.
 
 **exit 7, `Cannot modify restricted parameters`** — see the console limitation above.
+
+**A managed query fails with `destinationTable cannot be set for scripts`** — it was managed by a CLI older than 0.4.0 while carrying a destination table. `revert --confirm` restores it; re-apply with 0.4.0 or newer converts it properly.
+
+**A destination-table query is skipped with `destination_script_rejected`** — BigQuery refused the converted script at dry run; the `detail` carries BigQuery's reason. Usually the identity running the CLI has no write access to the destination table: run the CLI as the scheduled query's owner, or grant it `bigquery.dataEditor` on the dataset.
 
 **exit 7 or 6, `changed since the plan was computed`** — someone edited that scheduled query between the plan and the write, so the CLI did not touch it. Re-run; the new plan is computed against the current SQL.
 
