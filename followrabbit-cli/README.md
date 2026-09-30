@@ -267,9 +267,10 @@ A scheduled query is a persistent BigQuery Data Transfer Service config, so it n
 1. **List** the scheduled queries in the project (every location, or `--location`).
 2. **Send** each config to the optimizer, which decides from the query's history whether a slot reservation or on-demand is cheaper for it.
 3. **Receive** either a rewritten config (`decision: apply`) or a skip reason.
-4. On `apply --confirm`, **check** that the identity the scheduled query runs as can use the chosen reservation, **re-read** the config and, only if nobody changed it since the plan was computed, **patch** it back (`update_mask=params`; nothing else on it changes, including its owner). A scheduled query edited in the meantime is left alone and reported as failed with `changed since the plan was computed`; re-run to plan against the current version. `revert` applies the same guard.
+4. For a scheduled query that writes to a **destination table**, **convert** the rewritten SQL into a script that writes the table itself (`TRUNCATE` + `INSERT` in a transaction for `WRITE_TRUNCATE`, `INSERT` for `WRITE_APPEND`, column list from a dry run of your SQL), because BigQuery does not allow a destination table on the multi-statement query the `SET` line creates. The script is dry-run before the plan is shown; see [Destination tables](#destination-tables) for the shape, the equivalence argument and the cases that are skipped instead.
+5. On `apply --confirm`, **check** that the identity the scheduled query runs as can use the chosen reservation, **re-read** the config and, only if nobody changed it since the plan was computed, **patch** it back (`update_mask=params,destination_dataset_id`; for a converted query the destination settings are cleared, nothing else on the config changes, including its owner). A scheduled query edited in the meantime is left alone and reported as failed with `changed since the plan was computed`; re-run to plan against the current version. `revert` applies the same guard and, for a converted query, puts the SQL and the destination settings back exactly as they were.
 
-What a managed scheduled query's SQL looks like afterwards:
+What a managed scheduled query's SQL looks like afterwards (no destination table):
 
 ```sql
 SET @@reservation = 'projects/<admin>/locations/<region>/reservations/<name>';
@@ -285,6 +286,31 @@ SET @@reservation = 'projects/<admin>/locations/<region>/reservations/<name>';
 ```
 
 When on-demand wins the first line is `SET @@reservation = 'none';`. The leading line is what BigQuery acts on; the trailing block is how Rabbit tracks the decision (Data Transfer Service configs have no labels). Rabbit joins executed jobs to decisions through `INFORMATION_SCHEMA.JOBS_BY_PROJECT.query`, so the block must stay on the query for savings to be attributed.
+
+With a destination table the same SET line and fence are there, and your SQL sits between two marker comments inside the `INSERT` that replaces the destination setting:
+
+```sql
+SET @@reservation = 'projects/<admin>/locations/<region>/reservations/<name>';
+BEGIN TRANSACTION;                                   -- WRITE_TRUNCATE only
+TRUNCATE TABLE `<project>.<dataset>.<table>`;        -- WRITE_TRUNCATE only
+INSERT INTO `<project>.<dataset>.<table>` (`col_a`, `col_b`)
+-- rabbit-destination-query-begin
+<your original SQL — unchanged, minus its terminating ;>
+-- rabbit-destination-query-end
+;
+COMMIT TRANSACTION;                                  -- WRITE_TRUNCATE only
+
+-- BEGIN rabbit-bq-scheduled — DO NOT EDIT
+-- …the fields above, plus:
+-- rabbit-destination-dataset: <dataset>
+-- rabbit-destination-table: <table>
+-- rabbit-destination-write-disposition: WRITE_TRUNCATE
+-- rabbit-destination-query-head: ""
+-- rabbit-destination-query-tail: ";\n"
+-- END rabbit-bq-scheduled
+```
+
+The cost is the same as before the conversion: the `INSERT` bills exactly the bytes your SELECT scans, `TRUNCATE TABLE` bills nothing, and slot usage matched the Data Transfer Service run in our measurements.
 
 ### Prerequisites
 
@@ -470,9 +496,10 @@ Destination-table queries the CLI will not convert (all reported as skipped with
 | `destination_not_a_table` | The destination is a view, snapshot or external table. |
 | `destination_write_disposition_missing` | The config has no write preference. BigQuery itself fails such a scheduled query. |
 | `destination_schema_unresolved` | The dry run of your SQL failed (the CLI's credentials lack access to a referenced table, or the SQL has an error), or the query is not a plain SELECT. |
-| `destination_schema_mismatch` | The result columns differ from the table's (`WRITE_TRUNCATE` needs an exact match including modes, `WRITE_APPEND` needs every result column present with the same type). STRUCT columns must have their fields in the same order, because `INSERT` assigns struct fields by position. |
+| `destination_schema_mismatch` | The result columns differ from the table's (`WRITE_TRUNCATE` needs an exact match including modes, `WRITE_APPEND` needs every result column present with the same type). Parameterized types count: a `NUMERIC(5,2)` or `STRING(3)` table column against a plain `NUMERIC` or `STRING` result would round or reject values that the Data Transfer Service wrote as they were. STRUCT columns must have their fields in the same order, because `INSERT` assigns struct fields by position. |
+| `destination_query_reads_destination` | A `WRITE_TRUNCATE` query that reads its own destination table (a dedup like `SELECT DISTINCT * FROM t` into `t`). `TRUNCATE` would run before the `SELECT` and the query would write nothing. Staging the result through a temp table would fix it but scans the result a second time, which works against the saving, so these stay on their current pricing model. `WRITE_APPEND` self-references are fine and are converted. |
 | `destination_script_rejected` | BigQuery rejected the rewritten script at dry run, run with the CLI's own credentials; the `detail` carries BigQuery's message. Most often the CLI identity lacks write access to the destination table, or the customer SQL ends with a `/* */` or `#` comment after its `;`. |
-| `destination_wrapper_modified` | Someone edited the script the CLI wrote; restore it by hand or recreate the scheduled query. |
+| `destination_wrapper_modified` | Someone edited the script the CLI wrote: text added outside the marker comments, a fence line removed or malformed. `revert` refuses too rather than restore something incomplete; fix the SQL by hand or recreate the scheduled query. |
 
 Each rewritten script is dry-run during planning, so `recommend` already shows a `destination_script_rejected` skip where BigQuery would refuse it.
 
