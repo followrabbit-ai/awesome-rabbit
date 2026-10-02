@@ -30,7 +30,7 @@ This repository aims to provide tools, scripts, and code snippets for current an
 
 # Quickstart: CLI
 
-The `followrabbit` CLI is what both the plugins and any terminal/CI workflow drive. Zero to first review:
+The `followrabbit` CLI is what both the plugins and any terminal/CI workflow drive. Zero to first check:
 
 ```bash
 # 1. Install (Homebrew shown; npm and curl installers in the CLI reference)
@@ -40,10 +40,7 @@ brew install followrabbit-ai/tap/followrabbit
 # 2. Get an API key at https://subscriptions.agentic.followrabbit.ai, then:
 followrabbit auth login --key <YOUR_API_KEY>
 
-# 3. First cost review of your Terraform / SQL
-followrabbit costreview --dir ./infra --types tf,sql
-
-# 4. Deterministic BigQuery SQL check — no model call, no quota spend (0.2.0+)
+# 3. Deterministic BigQuery SQL check — no model call, no quota spend (0.2.0+)
 followrabbit sql models/
 ```
 
@@ -55,7 +52,7 @@ This repository includes plugins for **Claude Code**, **Cursor**, and **OpenAI C
 
 ## Prerequisites
 
-You'll need the `followrabbit` CLI installed and authenticated locally before invoking the plugin — see the [quickstart](#quickstart-cli) above.
+You'll need the `followrabbit` CLI installed and authenticated locally before invoking the plugin — see the [quickstart](#quickstart-cli) above. The scheduled-query pricing skill uses its own credentials, listed under [Skills](#skills), not the key from the quickstart.
 
 - API keys and pricing: [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai)
 - Privacy policy: [followrabbit.ai/en/rabbit-privacy-policy](https://followrabbit.ai/en/rabbit-privacy-policy)
@@ -95,30 +92,16 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 
 ## Skills
 
-- **cost-review** — Scans local Terraform and SQL files, runs AI-powered cost analysis via the FollowRabbit API, presents optimization instructions, and offers to apply suggestions directly to code. User-invocable via `/followrabbit:cost-review`.
 - **optimize-bq-compute-pricing-model-scheduled-queries** — Sets the optimal compute pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a GCP project by driving `followrabbit optimize sq-pricing` (CLI 0.3.0+). Always runs `recommend` first, asks before `apply --confirm`, verifies with `status`, and can `revert`. Needs a BQ Job Optimizer API key from [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) and Google Application Default Credentials. User-invocable via `/followrabbit:optimize-bq-compute-pricing-model-scheduled-queries`.
 - **sql-review** — Deterministic BigQuery SQL best-practice checks via `followrabbit sql` (CLI 0.2.0+). No LLM and no LLM quota — fast enough to run on every iteration. User-invocable via `/followrabbit:sql-review`.
 
 ## Agents
 
-- **cost-optimizer** — (Claude Code and Cursor) Activates contextually when you discuss Terraform costs, pricing, savings, or resource sizing. Runs `followrabbit costreview` and can list recommendations with `followrabbit recos list`. In Codex, the same proactive behavior is provided by the `cost-review` skill with implicit invocation enabled.
 - **scheduled-query-pricing-optimizer** — (Claude Code and Cursor) Activates contextually when you discuss BigQuery scheduled-query pricing, reservation or slot routing, or ask what Rabbit changed. Drives `followrabbit optimize sq-pricing` through the recommend → confirm → apply → verify flow. In Codex, the matching skill provides the same behavior with implicit invocation.
 
 ## Data sent to the FollowRabbit API
 
-When the `cost-review` skill or `cost-optimizer` agent runs, the local `followrabbit` CLI's `costreview` command sends data to `https://api.agentic.followrabbit.ai` (default; overridable with `--api-url`) over HTTPS:
-
-- **Full file contents of every `*.tf`, `*.tfvars`, and `*.tfvars.json` file** under the working directory, up to a combined 512 KiB budget. For files over the budget, the raw content is omitted, but their extracted resource blocks — including every quoted attribute value — are still transmitted in the resource index described below.
-- **Full file contents of every `*.sql` file** under the working directory, with each file capped at 100 KiB. There is no aggregate SQL budget on the client; the server caps the total uploaded context at 500,000 characters and rejects anything larger with `400 INVALID_REQUEST` — see [troubleshooting](followrabbit-cli/#troubleshooting).
-- **Relative paths** (from the scan root) of every file listed above.
-- A summarized index of Terraform resources, modules, and `.tfvars` environment files extracted from those files (alongside, not instead of, the raw content).
-- The skill IDs requested and, optionally, a model override.
-
-It does **not** send file contents outside `*.tf` / `*.tfvars` / `*.tfvars.json` / `*.sql`, the absolute working-directory path, your hostname, username, OS, environment variables, `.git/` history, or branch state. Directories whose name starts with `.` (e.g. `.git`, `.terraform`) and `node_modules` are skipped during the scan.
-
-The CLI does **not** read or honor `.gitignore` — any non-hidden directory listed in `.gitignore` will still be scanned.
-
-Other commands:
+The plugin skills and agents drive the local `followrabbit` CLI, which talks to `https://api.agentic.followrabbit.ai` (default; overridable with `--api-url`) over HTTPS. Per command:
 
 - `followrabbit context` — local only, no API call.
 - `followrabbit status` — sends only your API key.

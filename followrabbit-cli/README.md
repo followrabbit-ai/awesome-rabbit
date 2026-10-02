@@ -123,26 +123,6 @@ Show API key info and quota usage for the current period.
 followrabbit status
 ```
 
-### `costreview`
-
-Scan local Terraform / SQL files and call the Rabbit API for AI-powered cost-optimization recommendations.
-
-```bash
-followrabbit costreview                          # scan Terraform in the current directory
-followrabbit costreview --dir ./infra --types tf,sql
-followrabbit costreview --filter sql --skills sql-antipatterns
-```
-
-| Flag | Default | Description |
-|---|---|---|
-| `--dir <path>` | current directory | Directory to scan. |
-| `--types <list>` | `tf` | Comma-separated scan types: `tf`, `sql`. |
-| `--filter <name>` | — | Convenience alias for `--types`: `sql`, `infra`, or `all`. Overrides `--types` when set. |
-| `--skills <list>` | `cost-impact,partition-check,best-practices` | Skill IDs to run. **Replaces** the default set rather than adding to it — to add one, list the defaults too. |
-| `--model <name>` | API default | LLM override (e.g. `gemini-2.5-pro`). |
-
-The response groups instructions by skill — each is markdown that an agent or human can act on directly. See the [data-flow disclosure](../README.md#data-sent-to-the-followrabbit-api) for exactly what is uploaded.
-
 ### `context`
 
 Local-only structured Terraform/SQL scan. No API call — useful for piping into other tools or giving an agent repo context.
@@ -151,7 +131,10 @@ Local-only structured Terraform/SQL scan. No API call — useful for piping into
 followrabbit context --dir ./infra --types tf,sql --json
 ```
 
-Same `--dir` and `--types` flags as `costreview`.
+| Flag | Default | Description |
+|---|---|---|
+| `--dir <path>` | current directory | Directory to scan. |
+| `--types <list>` | `tf` | Comma-separated scan types: `tf`, `sql`. |
 
 ### `sql`
 
@@ -537,8 +520,6 @@ Each rewritten script is dry-run during planning, so `recommend` already shows a
 
 **Exit 3** — your key's quota for the period is exhausted or you are rate limited. Check usage with `followrabbit status`; quota is managed at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai).
 
-**`400 INVALID_REQUEST` from `costreview` on large repos** — the server caps uploaded context at 500,000 characters. SQL files are capped at 100 KiB each but there is no aggregate client-side cap, so a repo with roughly six or more large SQL files can exceed the ceiling. Narrow the scan with `--dir`, or split the review.
-
 **`unknown command "sql"`** — the installed CLI predates 0.2.0. Upgrade with the matching tool (see [Install](#install)). If the CLI is current but reports `NOT_SUPPORTED` (exit 5), the `--api-url` you point at does not serve the command yet.
 
 **Corporate proxy / TLS interception** — the CLI talks HTTPS to `api.agentic.followrabbit.ai`. If your proxy re-signs TLS, the request fails with a certificate error (exit 6); have the proxy's CA in the system trust store or allowlist the API host.
@@ -550,6 +531,5 @@ Each rewritten script is dry-run during planning, so `recommend` already shows a
 ## Related
 
 - [Coding-agent plugins](../README.md#coding-agent-plugins) — the Claude Code / Cursor / Codex surface for this CLI.
-- [`cost-review`](../skills/cost-review/) skill — the agent skill that drives `costreview`.
 - [assessment-cli](../assessment-cli/) — pre-sales assessment of a GCP/BigQuery environment; separate Python tool, no API key needed.
 - [bq-reverse-proxy](../bq-reverse-proxy/) — applies the same BQ Job Optimizer to ad-hoc jobs from Looker / dbt / Airflow at submission time; `optimize sq-pricing` covers the scheduled queries the proxy never sees.

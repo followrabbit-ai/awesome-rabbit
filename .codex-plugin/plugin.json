@@ -1,7 +1,7 @@
 {
   "name": "followrabbit",
-  "version": "1.4.0",
-  "description": "Cloud cost optimization for GCP infrastructure. Review changes for cost impact and auto-apply savings recommendations using the followrabbit CLI.",
+  "version": "1.5.0",
+  "description": "Cloud cost optimization for GCP. Check BigQuery SQL for cost problems and set the optimal pricing model on scheduled queries using the followrabbit CLI.",
   "author": {
     "name": "Rabbit",
     "email": "support@followrabbit.ai",
@@ -25,8 +25,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "FollowRabbit Cost Optimization",
-    "shortDescription": "AI-powered GCP cost review for Terraform and SQL",
-    "longDescription": "FollowRabbit scans your local Terraform and SQL files, runs AI-powered cost analysis against the FollowRabbit API, and returns actionable optimization instructions. Codex can then apply the suggested changes directly to your code. Covers compute sizing, storage classes, BigQuery partitioning/clustering, labels, lifecycle rules, autoscaling, HA over-provisioning, network tier, and committed use discounts.",
+    "shortDescription": "Optimal pricing model for BigQuery scheduled queries",
+    "longDescription": "FollowRabbit sets the optimal compute pricing model, slot reservation or on-demand, on every BigQuery scheduled query in a GCP project. Codex drives the followrabbit CLI through recommend, confirm, apply and verify, and can revert the change.",
     "developerName": "Rabbit",
     "category": "Development & Workflow",
     "capabilities": [
@@ -37,9 +37,9 @@
     "privacyPolicyURL": "https://followrabbit.ai/en/rabbit-privacy-policy",
     "termsOfServiceURL": "https://followrabbit.ai/en/rabbit-general-terms-and-conditions",
     "defaultPrompt": [
-      "Run a FollowRabbit cost review on this repository and summarize the optimization opportunities.",
-      "Check these Terraform changes for cost impact before I commit.",
-      "List the open FollowRabbit recommendations for this repo and help me apply the top ones."
+      "Optimize the pricing model on my BigQuery scheduled queries.",
+      "Should my scheduled queries run on a reservation or on-demand?",
+      "Show me which scheduled queries Rabbit is managing in this project."
     ],
     "brandColor": "#F97316",
     "logo": "./.codex-plugin/assets/logo.png"
