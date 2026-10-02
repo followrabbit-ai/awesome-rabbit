@@ -1,12 +1,11 @@
 ---
 name: sql-review
 description: >
-  Run deterministic BigQuery SQL cost checks with `followrabbit sql`.
-  Use when the user asks whether a query is expensive, wants SQL checked for
-  cost antipatterns before merge, or is editing BigQuery SQL / dbt models and
-  mentions cost, scans, partitions, or slots. No LLM involved — fast and does
-  not consume LLM quota.
-version: 1.3.0
+  Run deterministic BigQuery SQL best-practice checks with `followrabbit sql`.
+  Use when the user wants BigQuery SQL checked for cost antipatterns before
+  commit, or is editing BigQuery SQL / dbt models and mentions cost, scans,
+  partitions, or slots. No LLM involved — fast and does not consume LLM quota.
+version: 1.0.0
 tools: Bash, Read
 user-invocable: true
 ---
@@ -28,8 +27,8 @@ works. Do not install software on the user's behalf.
 
 ## When to Use
 
-- "Is this query expensive?" / "check this SQL for cost issues"
-- Before merging changes to `.sql` files or compiled dbt models
+- "Check this SQL for cost antipatterns" / "does this query follow best practices?"
+- Before committing changes to BigQuery `.sql` files or compiled dbt models
 - The user mentions BigQuery scan cost, partitions, clustering, or slots
   while editing SQL
 
