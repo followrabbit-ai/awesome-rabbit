@@ -23,7 +23,7 @@ This repository aims to provide tools, scripts, and code snippets for current an
   - The **Rabbit BQ Reverse Proxy** deployment package. A transparent reverse proxy that sits between your clients (Looker, dbt Cloud, Airflow, etc.) and the BigQuery REST API. It intercepts job submissions (`jobs.insert`, `jobs.query`), calls the Rabbit BQ Job Optimizer to automatically optimize job configuration (e.g. reservation routing), and streams everything else through unchanged with a fail-open design. Includes ready-to-use Terraform for Cloud Run deployment (pulling Rabbit's published container image) and a standalone performance test tool.
 
 - [followrabbit-cli](followrabbit-cli/):
-  - Reference for the `followrabbit` CLI — install (brew / npm / curl), authentication, every shipped command and flag, environment variables, exit codes, and troubleshooting. Verified against the shipped binary. Includes the deep-dive on `optimize sq-pricing`, which sets the optimal pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a project using the Rabbit BQ Job Optimizer — the scheduled-query counterpart of the reverse proxy above.
+  - Reference for the `followrabbit` CLI — install (brew / npm / curl), authentication, every shipped command and flag, environment variables, exit codes, and troubleshooting. Verified against CLI 0.3.0; the `sql` section describes 0.5.1. Includes the deep-dive on `optimize sq-pricing`, which sets the optimal pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a project using the Rabbit BQ Job Optimizer — the scheduled-query counterpart of the reverse proxy above.
 
 - [vpc-sc-helper](vpc-sc-helper/):
   - A read-only bash helper for customers whose VPC Service Controls perimeters block Rabbit's data loading. Given the violation id(s) from Rabbit's error reports, it finds the denial in your audit logs, names the exact perimeter, and prints the minimal ingress/egress rule plus dry-run-first `gcloud` commands to apply it.
@@ -41,6 +41,7 @@ brew install followrabbit-ai/tap/followrabbit
 followrabbit auth login --key <YOUR_API_KEY>
 
 # 3. Deterministic BigQuery SQL check — no model call, no quota spend (0.2.0+)
+# A directory is walked for .sql, .sqlx and .py files and all of them are uploaded; add --no-python to skip the .py files
 followrabbit sql models/
 ```
 
@@ -93,7 +94,7 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 ## Skills
 
 - **optimize-bq-compute-pricing-model-scheduled-queries** — Sets the optimal compute pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a GCP project by driving `followrabbit optimize sq-pricing` (CLI 0.3.0+). Always runs `recommend` first, asks before `apply --confirm`, verifies with `status`, and can `revert`. Needs a BQ Job Optimizer API key from [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) and Google Application Default Credentials. User-invocable via `/followrabbit:optimize-bq-compute-pricing-model-scheduled-queries`.
-- **sql-review** — Deterministic BigQuery SQL best-practice checks via `followrabbit sql` (CLI 0.2.0+). No LLM and no LLM quota — fast enough to run on every iteration. User-invocable via `/followrabbit:sql-review`.
+- **sql-review** — Deterministic BigQuery SQL best-practice checks via `followrabbit sql` (CLI 0.2.0+; 0.5.1+ for directory runs that include Python DAG files). No LLM and no LLM quota — fast enough to run on every iteration. User-invocable via `/followrabbit:sql-review`.
 
 ## Agents
 
@@ -106,7 +107,7 @@ The plugin skills and agents drive the local `followrabbit` CLI, which talks to 
 - `followrabbit context` — local only, no API call.
 - `followrabbit status` — sends only your API key.
 - `followrabbit recos list` — sends your git `origin` remote URL (auto-detected) as a `?repo=` query parameter.
-- `followrabbit sql` — sends only the SQL files you name (contents and relative paths); no repository scan. The server keeps per-run counts and rule ids, and a keyed path hash only for keys tied to a customer account — see the [CLI reference](followrabbit-cli/#sql).
+- `followrabbit sql` — sends the full contents and the path of every file you name, plus stdin and inline `-q` query text. Pointed at a directory, it walks it and sends every `.sql`, `.sqlx` and `.py` file it finds, so the contents of every Python file under that directory are uploaded unless you pass `--no-python`. The walk skips hidden directories and `node_modules`, `target`, `dbt_packages`, `dbt_modules`, `venv`, `site-packages`, `__pycache__`, `build` and `dist` (a directory you name explicitly is always read); `.gitignore` is not honoured. The server decides which uploaded files hold SQL and reads SQL string literals out of Airflow operator calls in Python files without executing them; files with no SQL it can read come back as skipped. The server keeps per-run counts and rule ids, and a keyed path hash only for keys tied to a customer account — see the [CLI reference](followrabbit-cli/#sql).
 - `followrabbit optimize sq-pricing` (`recommend` / `apply`) — sends each BigQuery scheduled query's Data Transfer config in scope (name, display name, schedule, the full SQL and other parameters) plus the project id to the Rabbit BQ Job Optimizer at `https://api.followrabbit.ai/bq-job-optimizer` (overridable with `--optimizer-url`), authenticated with a separate BQ Job Optimizer API key in the `rabbit-api-key` header. Against Google Cloud, with your Application Default Credentials, it lists, reads and (on `--confirm`) patches scheduled queries, and runs one tiny `SELECT 1` probe job per run-as identity and reservation in your project to verify reservation access before writing. `status` and `revert` contact only Google Cloud — see the [CLI reference](followrabbit-cli/#deep-dive-optimize-sq-pricing).
 
 API keys are stored locally under `~/.config/followrabbit/credentials.json` (mode `0600`) and travel only in the `X-Rabbit-Api-Key` request header (never in bodies or URLs). Every request also includes a `User-Agent: followrabbit-cli/<version>` header. The CLI generates no telemetry, analytics, error-reporting, or update-check traffic of its own; server-side, `followrabbit sql` keeps the run record described above.

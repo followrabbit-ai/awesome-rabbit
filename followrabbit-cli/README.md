@@ -2,7 +2,7 @@
 
 Reference for the `followrabbit` command-line tool — the entrypoint for Rabbit cost-optimization workflows that run from a terminal, a CI pipeline, or an AI coding agent.
 
-Everything below was verified against the shipped binary **v0.3.0** by running the commands. For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
+Everything below except the `sql` section was verified against the shipped binary **v0.3.0** by running the commands. The `sql` section describes CLI **0.5.1**. For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
 
 ---
 
@@ -138,11 +138,14 @@ followrabbit context --dir ./infra --types tf,sql --json
 
 ### `sql`
 
-Deterministic BigQuery cost checks over the SQL you name — files, directories, stdin, or an inline query. No model call and no quota spend, so it is meant to run on every save or from a pre-commit hook. Requires **0.2.0** or newer; against an older CLI the command is unknown.
+Deterministic BigQuery cost checks over the SQL you point it at — files, directories, stdin, or an inline query. No model call and no quota spend, so it is meant to run on every save or from a pre-commit hook. Requires **0.2.0** or newer; against an older CLI the command is unknown. Directory runs that include Python files, as described below, need **0.5.1** (see the [troubleshooting note](#troubleshooting) for 0.5.0).
+
+Directories are walked for SQL and Python files; Python files are uploaded so SQL inside Airflow operators is checked too (`--no-python` turns that off). The server decides which files hold SQL, the rest come back as skipped.
 
 ```bash
 followrabbit sql query.sql                       # named file
-followrabbit sql models/ transforms/             # directories, walked for *.sql and *.sqlx
+followrabbit sql models/ transforms/             # directories, walked for *.sql, *.sqlx and *.py
+followrabbit sql dags/ --no-python               # directory, without uploading Python files
 cat q.sql | followrabbit sql                     # stdin
 followrabbit sql -q "SELECT * FROM \`p.d.t\`"    # inline SQL
 followrabbit sql models/ --fail-on high --json   # CI gate
@@ -151,6 +154,7 @@ followrabbit sql models/ --fail-on high --json   # CI gate
 | Flag | Description |
 |---|---|
 | `-q, --query <sql>` | Inline SQL instead of paths. |
+| `--no-python` | Do not upload `.py` files found in a directory walk. |
 | `--fail-on <level>` | Exit 7 when a finding at or above `high`, `medium`, or `low` exists. Without it, findings never fail the command. |
 | `--all` | Print every finding instead of the first 20. |
 | `--show-skipped` | List skipped files individually with their reason. |
@@ -159,14 +163,17 @@ followrabbit sql models/ --fail-on high --json   # CI gate
 How inputs are treated:
 
 - A file you name, stdin, and `--query` are checked as BigQuery by declaration — no dialect gate.
-- A directory is walked for `*.sql` and `*.sqlx`. Each file found passes through a BigQuery dialect gate first; files it does not recognise are skipped with reason `not_bigquery`. Hidden directories and `target/`, `node_modules/`, `dbt_packages/`, `dbt_modules/`, `venv/`, `__pycache__/`, `build/`, `dist/` are not descended into. A directory you name is always read, so `followrabbit sql target/compiled/` works.
+- A directory is walked for `.sql`, `.sqlx` and `.py` files (the suffix match is case-insensitive). Python files are uploaded by default so SQL inside Airflow operator calls in DAG files is checked too; `--no-python` turns that off. The walk does not descend into hidden directories (names starting with `.`) or directories named `node_modules`, `target`, `dbt_packages`, `dbt_modules`, `venv`, `site-packages`, `__pycache__`, `build`, `dist`. A directory you name is always read, so `followrabbit sql target/compiled/` works. `.gitignore` is not read or honoured.
+- Files found in a walk pass through a BigQuery dialect gate; files it does not recognise are skipped with reason `not_bigquery`.
+- Python files are parsed on the server to read SQL string literals out of Airflow operator call sites; they are not executed. A file with no SQL the server can read, such as an ordinary Python module, comes back as skipped with reason `no_sql`.
+- Walked `.sqlx` files currently come back as `no_sql` (there is no reader for that type yet). A `.sqlx` file you name explicitly is checked as SQL.
 - Templates are not rendered. A file still carrying `{{`, `{%`, `${`, or `@{` is skipped with reason `unresolved_templating` — run `dbt compile` and point at `target/compiled/`.
-- Other skip reasons: `parse_error`, `too_large` (over 128 KiB), `empty`. Skipped files are always counted in the summary; zero findings with skipped files is not a clean bill of health.
-- Limits: 128 KiB per file, 500 files per run (more is exit 4 — narrow the paths).
+- Other skip reasons: `parse_error`, `too_large` (over 128 KiB), `empty`. The full set is `no_sql`, `not_bigquery`, `unresolved_templating`, `parse_error`, `too_large`, `empty`. Skipped files are always counted in the summary; zero findings with skipped files is not a clean bill of health.
+- Limits: 128 KiB per file (larger is skipped as `too_large`) and 5000 files per run. A large run is sent in several requests automatically and the progress line on stderr says so: `Checking N files (X SQL, Y Python)...`. Over 5000 files nothing is sent and the command fails with `TOO_MANY_FILES` (with `--json` the error carries per-folder counts); run it per subfolder or pass `--no-python`.
 
 Each finding carries the file, line span, level (`high` / `medium` / `low`), a message, an optional fix, and a `measure_first` flag meaning measure the impact before applying the fix.
 
-**Data sent:** the contents and relative paths of the SQL files named, and nothing else from the repository. The SQL is analysed in memory and not stored. The server keeps one record per run — file and finding counts and the rule ids that fired — plus a keyed hash of each file path only when the API key belongs to a customer account; keys without one leave no path information.
+**Data sent:** the full contents and the path (as given, or relative to how the directory was named) of every file you name and of every `.sql`, `.sqlx` and `.py` file a directory walk finds, plus stdin and inline `--query` text. Running `followrabbit sql` on a directory therefore uploads the contents of every Python file under it, whether or not it contains SQL, unless you pass `--no-python`; the walk skips only the directories listed above and does not honour `.gitignore`. The server decides which uploaded files hold SQL. The SQL is analysed in memory and not stored. The server keeps one record per run — file and finding counts and the rule ids that fired — plus a keyed hash of each file path only when the API key belongs to a customer account; keys without one leave no path information.
 
 ### `recos list`
 
@@ -521,6 +528,8 @@ Each rewritten script is dry-run during planning, so `recommend` already shows a
 **Exit 3** — your key's quota for the period is exhausted or you are rate limited. Check usage with `followrabbit status`; quota is managed at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai).
 
 **`unknown command "sql"`** — the installed CLI predates 0.2.0. Upgrade with the matching tool (see [Install](#install)). If the CLI is current but reports `NOT_SUPPORTED` (exit 5), the `--api-url` you point at does not serve the command yet.
+
+**`sql` fails with `TOO_MANY_FILES` over 500 files, or `PAYLOAD_TOO_LARGE` over about 5 MB** — you are on CLI 0.5.0, which sends one request per run. Upgrade to 0.5.1, which splits a large run into several requests.
 
 **Corporate proxy / TLS interception** — the CLI talks HTTPS to `api.agentic.followrabbit.ai`. If your proxy re-signs TLS, the request fails with a certificate error (exit 6); have the proxy's CA in the system trust store or allowlist the API host.
 
