@@ -52,7 +52,7 @@ This repository includes plugins for **Claude Code**, **Cursor**, and **OpenAI C
 
 ## Prerequisites
 
-You'll need the `followrabbit` CLI installed locally before invoking the plugin — see the [quickstart](#quickstart-cli) above. The scheduled-query pricing skill uses its own credentials, listed under [Skills](#skills), not the key from the quickstart.
+You'll need the `followrabbit` CLI installed and authenticated locally before invoking the plugin — see the [quickstart](#quickstart-cli) above. The scheduled-query pricing skill uses its own credentials, listed under [Skills](#skills), not the key from the quickstart.
 
 - API keys and pricing: [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai)
 - Privacy policy: [followrabbit.ai/en/rabbit-privacy-policy](https://followrabbit.ai/en/rabbit-privacy-policy)
@@ -93,6 +93,7 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 ## Skills
 
 - **optimize-bq-compute-pricing-model-scheduled-queries** — Sets the optimal compute pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a GCP project by driving `followrabbit optimize sq-pricing` (CLI 0.3.0+). Always runs `recommend` first, asks before `apply --confirm`, verifies with `status`, and can `revert`. Needs a BQ Job Optimizer API key from [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) and Google Application Default Credentials. User-invocable via `/followrabbit:optimize-bq-compute-pricing-model-scheduled-queries`.
+- **sql-review** — Deterministic BigQuery SQL best-practice checks via `followrabbit sql` (CLI 0.2.0+). No LLM and no LLM quota — fast enough to run on every iteration. User-invocable via `/followrabbit:sql-review`.
 
 ## Agents
 
