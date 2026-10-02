@@ -52,7 +52,7 @@ This repository includes plugins for **Claude Code**, **Cursor**, and **OpenAI C
 
 ## Prerequisites
 
-You'll need the `followrabbit` CLI installed and authenticated locally before invoking the plugin — see the [quickstart](#quickstart-cli) above.
+You'll need the `followrabbit` CLI installed locally before invoking the plugin — see the [quickstart](#quickstart-cli) above. The scheduled-query pricing skill uses its own credentials, listed under [Skills](#skills), not the key from the quickstart.
 
 - API keys and pricing: [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai)
 - Privacy policy: [followrabbit.ai/en/rabbit-privacy-policy](https://followrabbit.ai/en/rabbit-privacy-policy)
@@ -100,7 +100,7 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 
 ## Data sent to the FollowRabbit API
 
-The plugin skills and agents drive the local `followrabbit` CLI, which talks to `https://api.agentic.followrabbit.ai` (default; overridable with `--api-url`) over HTTPS. It never sends the absolute working-directory path, your hostname, username, OS, environment variables, `.git/` history, or branch state. Per command:
+The plugin skills and agents drive the local `followrabbit` CLI, which talks to `https://api.agentic.followrabbit.ai` (default; overridable with `--api-url`) over HTTPS. Per command:
 
 - `followrabbit context` — local only, no API call.
 - `followrabbit status` — sends only your API key.
