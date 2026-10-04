@@ -21,13 +21,16 @@ stored SQL. A directory is walked for `.sql`, `.sqlx` and `.py` files and all of
 them are uploaded (see Data sent below). It is fast and free of LLM quota, so it
 can run on every iteration.
 
-Requires `followrabbit` CLI **0.2.0 or newer**; **0.5.1 or newer** for directory
+Requires `followrabbit` CLI **0.2.0 or newer**; **0.6.0 or newer** for directory
 runs that include Python files (0.5.0 caps a run at 500 files and about 5 MB).
 If `followrabbit sql --help`
 fails with an unknown-command error, tell the user to upgrade
 (`brew upgrade followrabbit-ai/tap/followrabbit`) and stop.
 The CLI must be authenticated (`followrabbit auth status`); any valid API key
-works. Do not install software on the user's behalf.
+works. From 0.6.0 a user whose organisation is set up for Google sign-in with
+Rabbit needs no key: `gcloud auth application-default login` is enough, and the
+CLI then also sends a Google ID token (email and Workspace domain) with each
+request. Do not install software or run a login on the user's behalf.
 
 ## When to Use
 
@@ -79,7 +82,7 @@ Notes that prevent wrong conclusions:
   ordinary Python module gets; walked `.sqlx` files also currently come back
   this way), `not_bigquery`, `unresolved_templating`, `parse_error`,
   `too_large` (over 128 KB), `empty`.
-- **Size limit**: up to 5000 files per run (0.5.1 sends large runs in several
+- **Size limit**: up to 5000 files per run (0.6.0 sends large runs in several
   requests). Over that, nothing is sent and the error `TOO_MANY_FILES` says to
   run per subfolder or pass `--no-python`.
 
