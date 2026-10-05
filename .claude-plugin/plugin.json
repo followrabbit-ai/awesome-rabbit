@@ -1,6 +1,6 @@
 {
   "name": "followrabbit",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Cloud cost optimization for GCP. Checks BigQuery SQL for cost problems and sets the optimal pricing model on scheduled queries using the followrabbit CLI (requires manual install). Data flow disclosed in README.",
   "author": {
     "name": "Rabbit",
