@@ -56,7 +56,7 @@ Keys are stored at `~/.config/followrabbit/credentials.json` (mode `0600`) and t
 
 ### Google sign-in (0.6.0+)
 
-If your organisation's Google Workspace domain is set up for Google sign-in with Rabbit, you do not need an API key. Sign in to Google once:
+If your organisation's Google Workspace domain is set up for Google sign-in with Rabbit, you do not need an API key for `sql`, `recos list` and `status`. Sign in to Google once:
 
 ```bash
 gcloud auth application-default login
@@ -67,6 +67,7 @@ There is no CLI setup: `sql`, `recos list`, `status` and `auth status` find thos
 
 - Google sign-in is tried first and an API key second. With both present and a domain that is set up, the Google identity is used, even over `--api-key`.
 - If the domain is not set up, the CLI falls back to the API key. With no key it exits 2 with `GOOGLE_DOMAIN_NOT_ENABLED`.
+- Google sign-in does not cover `followrabbit optimize`. Those commands always need a BQ Job Optimizer API key (see [Second key for `optimize`](#second-key-for-optimize)); they use your Google credentials only to read and update scheduled queries in your project.
 - Only user credentials are read. Service account keys and workload identity configurations are ignored, so CI keeps using an API key.
 - `auth status` shows which identity the server used (`auth`: `google` or `api-key`). `auth logout` removes the stored key only; it does not sign you out of Google.
 - Set `FOLLOWRABBIT_GOOGLE_AUTH=off` to never read Google credentials or send the token.

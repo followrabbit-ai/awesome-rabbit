@@ -40,7 +40,8 @@ brew install followrabbit-ai/tap/followrabbit
 # 2. Get an API key at https://subscriptions.agentic.followrabbit.ai, then:
 followrabbit auth login --key <YOUR_API_KEY>
 # (0.6.0+: if your organisation is set up for Google sign-in with Rabbit,
-#  `gcloud auth application-default login` replaces this step)
+#  `gcloud auth application-default login` replaces this step. Not for
+#  `optimize`, which always needs its own API key)
 
 # 3. Deterministic BigQuery SQL check — no model call, no quota spend (0.2.0+)
 # A directory is walked for .sql, .sqlx and .py files and all of them are uploaded; add --no-python to skip the .py files
