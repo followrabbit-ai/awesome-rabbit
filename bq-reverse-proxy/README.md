@@ -546,45 +546,49 @@ bq --api https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app query "SELECT 1"
 
 ### JDBC (Simba driver)
 
-**Version scope:** the driver behavior below was investigated with Simba JDBC **1.8.0.1001**; the test coverage is stated explicitly. Confirm the exact driver bundled with your application before applying them; they are not a compatibility guarantee for other JDBC or ODBC versions.
+Use `PrivateServiceConnectUris` to route BigQuery query submissions through Rabbit while keeping authentication and Storage API requests on Google's endpoints. Storage Read provides fast downloads for eligible large results.
 
-In that version, changing the host in the JDBC URL alone does not change the BigQuery REST endpoint. The previous example using a Cloud Run hostname in that position was incorrect for the tested driver. The endpoint override used in our tests is `PrivateServiceConnectUris=BIGQUERY=...`.
+This guidance applies to **Simba JDBC 1.8.0.1001 with access-token authentication**. For service-account authentication, other driver versions, or managed SaaS applications such as Strategy, contact Rabbit to confirm a compatible setup before changing your connection.
 
-#### Endpoint and authentication constraints
+#### Prepare the endpoint
 
-The tested driver derives a "universe domain" from the `BIGQUERY` URI and compares it with the credentials' universe, normally `googleapis.com`. With default Google-universe credentials, a Cloud Run URL or an ordinary corporate hostname fails this check. In our local test, `https://rabbit.p.googleapis.com` derived `googleapis.com` and passed. Serve this endpoint on port 443 **without an explicit `:443` in the URI**: the tested parser includes an explicit port in the derived domain (`googleapis.com:443`), causing a mismatch. This is a workaround for this driver version, not a requirement of the Rabbit REST proxy or a provisioned Google Private Service Connect endpoint.
+This integration requires a custom TLS endpoint in front of Rabbit, in addition to the default Cloud Run deployment:
 
-For this approach, override only `BIGQUERY`; leave `OAUTH2`, `READ_API`, and `WRITE_API` at their Google defaults. Pointing `OAUTH2` at a corporate proxy hostname can change the universe on service-account credentials. In our reproduction, REST requests then worked but the Storage Read client rejected the credentials with `The configured universe domain (googleapis.com) does not match the universe domain found in the credentials`, causing REST fallback.
+- **Hostname:** use a name such as `rabbit.p.googleapis.com`, served on port 443. This naming pattern satisfies the driver's Google universe-domain validation. A standard Cloud Run URL or corporate hostname does not satisfy that check with default Google credentials.
+- **DNS and network access:** the JDBC client must resolve the hostname and reach the endpoint. A [private DNS zone](https://cloud.google.com/dns/docs/zones/zones-overview) and internal load balancer can provide this within a connected VPC. For an externally hosted application, confirm DNS and network access with the hosting provider; a zone in your VPC alone is not sufficient.
+- **TLS certificate:** the endpoint needs a certificate covering the hostname, issued by a private CA trusted by the client. A public certificate cannot be obtained through ordinary domain validation for a name under Google's domain. Keep certificate and hostname verification enabled.
+- **Truststore:** if you configure `SSLTrustStore`, include both the endpoint's private CA and the public roots required for Google's HTTPS endpoints. This setting replaces the driver's default HTTPS CA store rather than extending it. Storage uses a separate gRPC transport, so verify its TLS trust and connectivity separately.
 
-With the tested driver, a service-account JSON key containing `"universe_domain": "googleapis.com"` instead failed at connection time when `OAUTH2` specified another universe. A key without that field followed a different path. Compatibility depends on the field and authentication path, not just the age of the key; rotation can expose this failure. Do not remove the field to work around the check.
+#### Configure the connection
 
-#### DNS, networking, and certificates
+Add this property to your JDBC connection string, replacing `rabbit` with your configured endpoint name:
 
-The hostname workaround requires infrastructure beyond this package's default Cloud Run deployment:
+```text
+PrivateServiceConnectUris=BIGQUERY=https://rabbit.p.googleapis.com;
+```
 
-- The JDBC client must resolve the chosen hostname to a reachable TLS endpoint in front of Rabbit. A [private DNS zone](https://cloud.google.com/dns/docs/zones/zones-overview) and internal load balancer can provide this for clients with access to that VPC's DNS and network. Creating a zone in your VPC alone does **not** make it available to an externally hosted SaaS client such as Strategy; its DNS and network access must also be established.
-- The TLS endpoint must present a certificate covering the exact hostname, issued by a private CA the client trusts. You do not control `googleapis.com`, so ordinary public domain-validation certificate issuance is not available for this name. Preserve certificate and hostname verification.
-- If you set `SSLTrustStore`, the tested driver's HTTPS transport uses that store instead of its default CA store; it does not merge the two. Include the proxy CA and the public roots needed by Google's HTTPS endpoints. A store containing only the proxy CA caused a `PKIX path building failed` error during the OAuth token fetch. Storage uses a separate gRPC transport: also verify its TLS trust and connectivity, rather than assuming `SSLTrustStore` configures it.
+Omit the explicit `:443` from the URI. In this driver version, including it causes a universe-domain mismatch.
 
-Our local test used a separate **forward CONNECT proxy**, configured through `ProxyHost` and `ProxyPort`, to map `rabbit.p.googleapis.com:443` to a local TLS terminator. That forward proxy is not included in this package. Its other tunnels connected to Google endpoints, so Storage bypassed the Rabbit reverse proxy but still traversed the forward proxy. A production design also needs secure access controls, throughput validation, and a certificate chain already trusted by the client or an approved truststore update. This test does not establish a solution requiring no changes to a hosted application's configuration.
+Leave `OAUTH2`, `READ_API`, and `WRITE_API` at their Google defaults. Overriding `OAUTH2` can cause credential validation failures or prevent Storage Read from working. The Rabbit reverse proxy handles the BigQuery REST API; Storage Read/Write requests must reach Google's Storage API endpoint separately.
 
-#### What was tested
+Changing only the hostname in the JDBC URL does not configure the REST endpoint override in this driver version.
 
-For a local 1M-row / approximately 50 MB workload:
+#### Verify the connection
 
-| Configuration | Authentication | Storage Read | Fetch time |
-|---|---|---|---|
-| Direct to Google | Service account | Used | 6–7 s |
-| Corporate-host `BIGQUERY` and `OAUTH2` overrides | Service account on the compatible key-file path | Universe mismatch, then REST fallback | 75–84 s |
-| `BIGQUERY=https://rabbit.p.googleapis.com`, Google defaults for other endpoints, local CONNECT proxy and TLS terminator | Access token | Used | 6–7 s |
+Run a representative large query and confirm that:
 
-These are local measurements, not a performance guarantee. The successful hostname-workaround test used **access-token authentication**, not the service-account token-fetch flow. Service-account authentication with that hostname and the actual hosted Strategy deployment remain to be validated. See the [investigation and test record](https://github.com/followrabbit-ai/bq-reverse-proxy/issues/41).
+1. Rabbit receives the query submission.
+2. The complete result is returned with the expected download performance.
+3. The driver uses Storage Read for an eligible result. With `LogLevel=4`, look for `Read session Name` and `Retrieving data using the Storage API`.
 
-#### Confirm routing and result fetching
+Storage Read use depends on result eligibility, configured thresholds, permissions, and connectivity. If the log reports `Fallback to using the standard API`, inspect the preceding exception to identify why the driver switched to REST.
 
-The tested driver enables its High-Throughput API option when `AllowLargeResults` is off (the default), but actual Storage Read use still depends on result eligibility, thresholds, permissions, and successful client setup. At `LogLevel=4`, `Read session Name` and `Retrieving data using the Storage API` indicate the Storage path. `Fallback to using the standard API` indicates a switch to REST; inspect the preceding exception to find the cause. That line alone does not prove a universe-domain or proxy configuration problem, and some errors surface to the application instead of falling back.
-
-Before production use, confirm that Rabbit receives the job submissions and that a representative large query returns its complete results through Storage Read. A successful connection or a fast query alone does not prove that Rabbit is receiving and optimizing the workload.
+| Symptom | What to check |
+|---|---|
+| Universe-domain mismatch | Use the configured `.p.googleapis.com` endpoint without an explicit port and leave authentication and Storage endpoints at their defaults. |
+| `PKIX path building failed` | Check the certificate chain and trusted CAs for the failing endpoint. |
+| Slow downloads with REST fallback | Inspect the preceding driver error and verify Storage API access and connectivity. |
+| Queries succeed but Rabbit receives no submissions | Check the `PrivateServiceConnectUris` setting and the endpoint's routing to Rabbit. |
 
 ### Java (google-cloud-bigquery)
 
