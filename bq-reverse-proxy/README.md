@@ -550,6 +550,33 @@ Use `PrivateServiceConnectUris` to route BigQuery query submissions through Rabb
 
 This guidance applies to **Simba JDBC 1.8.0.1001 with access-token authentication**. For service-account authentication, other driver versions, or managed SaaS applications such as Strategy, contact Rabbit to confirm a compatible setup before changing your connection.
 
+#### Why large result downloads can become slow
+
+A connection can succeed and small queries can work normally while large results take much longer to download. BigQuery may finish executing the query at its usual speed, but the application then spends longer fetching the rows. This can happen when the driver switches from the Storage Read API to paged REST downloads.
+
+The driver uses separate clients for different parts of a request:
+
+| Endpoint setting | Purpose | Destination for this integration |
+|---|---|---|
+| `BIGQUERY` | Submit queries, check jobs, and retrieve results through REST when needed | Rabbit's REST proxy |
+| `OAUTH2` | Obtain access tokens when required by the authentication method | Google's authentication endpoint |
+| `READ_API` | Stream eligible large results using the Storage Read API over gRPC | `bigquerystorage.googleapis.com:443` |
+
+Rabbit optimizes the query when it is submitted. The result can then be downloaded using Storage Read without passing through the Rabbit reverse proxy. The driver's High-Throughput API option is enabled by default when `AllowLargeResults` is off, but result size and other eligibility checks still determine whether it is used.
+
+#### How endpoint validation affects the driver
+
+Simba 1.8.0.1001 treats the `PrivateServiceConnectUris` values as more than routing addresses. It also uses them to identify the Google cloud environment, called a **universe domain**, associated with the connection:
+
+1. **The BigQuery endpoint determines the expected universe.** The driver takes the part after `.p.` in the endpoint name, or after the first dot if `.p.` is absent. For example, `rabbit.p.googleapis.com` produces `googleapis.com`, while `proxy.example.com` produces `example.com`. It compares this value with the credentials' universe, normally `googleapis.com`. A mismatch can prevent the connection from opening.
+2. **Overriding OAuth can change the credentials' universe.** In the service-account authentication path, pointing `OAUTH2` at the same corporate hostname can cause the driver to assign that hostname's universe to the credentials. This can allow REST requests to proceed, but it does not make those credentials compatible with every Google client. If the service-account key explicitly declares a different universe, the driver can reject the connection at this stage instead.
+3. **Storage Read validates the shared credentials separately.** Its client uses the same credentials but connects to the Google Storage endpoint, whose default universe is `googleapis.com`. Credentials assigned to `example.com` fail this check even if REST requests through the proxy succeed.
+4. **The driver can fall back to REST.** For this Storage Read failure, the default behavior is to log the exception and `Fallback to using the standard API`, then fetch results through REST. The application may receive a successful result without displaying the underlying error. Other errors, or settings that force Storage API use, can cause the query to fail instead.
+
+REST fetching retrieves results in pages using `jobs.getQueryResults`. Each page needs another request through the proxy to BigQuery, so network round-trip time becomes more significant as the result grows. This explains why the slowdown may appear mainly during large downloads, rather than during query execution.
+
+Leaving `READ_API` at its default endpoint is necessary, but does not fix credentials whose universe was changed by an `OAUTH2` override. Pointing `READ_API` at Rabbit also cannot resolve the issue: the current reverse proxy does not forward Storage API traffic. Enabling HTTP/2 on Cloud Run alone does not change either limitation.
+
 #### Prepare the endpoint
 
 This integration requires a custom TLS endpoint in front of Rabbit, in addition to the default Cloud Run deployment:
