@@ -1,8 +1,8 @@
 # `followrabbit` CLI Reference
 
-Reference for the `followrabbit` command-line tool — the entrypoint for Rabbit cost-optimization workflows that run from a terminal, a CI pipeline, or an AI coding agent.
+Reference for the `followrabbit` command-line tool — the entrypoint for Rabbit cost-optimization workflows that run from a terminal or an AI coding agent.
 
-Everything below except the `sql` section was verified against the shipped binary **v0.3.0** by running the commands. The `sql` section describes CLI **0.6.0**. For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
+The `sql` and `auth` sections describe CLI **0.7.0**. The rest was verified against the shipped binary **v0.3.0** by running the commands. For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
 
 ---
 
@@ -22,7 +22,7 @@ npm install -g @followrabbit/cli
 curl -fsSL https://followrabbit-ai.github.io/homebrew-tap/install.sh | sh
 ```
 
-On Homebrew 6.x and later, `brew install` refuses formulae from untrusted third-party taps, so the `brew trust` step is required once per machine. In non-interactive CI, skipping it is a hard failure.
+On Homebrew 6.x and later, `brew install` refuses formulae from untrusted third-party taps, so the `brew trust` step is required once per machine. In a non-interactive install, skipping it is a hard failure.
 
 Verify the install:
 
@@ -36,51 +36,38 @@ Upgrade later with the matching tool: `brew upgrade followrabbit-ai/tap/followra
 
 ## Authenticate
 
-You need a Rabbit API key. Get one at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai).
-
-```bash
-followrabbit auth login --key <YOUR_API_KEY>
-followrabbit auth status
-```
-
-`auth status` reports `authenticated: true` once the key is stored. There is no browser-based login: `auth login` without `--key` exits 4 with `browser-based login is not yet supported; use --key to provide an API key`.
-
-| Command | Purpose |
-|---|---|
-| `followrabbit auth login --key <KEY>` | Store an API key in the user config. |
-| `followrabbit auth status` | Check whether the CLI is authenticated; prints the signup URL when not. |
-| `followrabbit auth logout` | Remove stored credentials. |
-| `followrabbit auth token` | Print the current API key to stdout, for scripts that need to relay it. |
-
-Keys are stored at `~/.config/followrabbit/credentials.json` (mode `0600`) and travel only in the `X-Rabbit-Api-Key` request header.
-
-### Google sign-in (0.6.0+)
-
-If your organisation's Google Workspace domain is set up for Google sign-in with Rabbit, you do not need an API key for `sql`, `recos list` and `status`. Sign in to Google once:
+The CLI signs in with your Google account.
 
 ```bash
 gcloud auth application-default login
 followrabbit auth status
 ```
 
-There is no CLI setup: `sql`, `recos list`, `status` and `auth status` find those credentials on their own. On each of those commands the CLI asks Google for an ID token for your account and sends it in the `X-Rabbit-Google-Id-Token` request header. The token proves your email address and Workspace domain to Rabbit; it cannot be used to access Google Cloud. The run is then tied to your organisation's Rabbit account, which lets `followrabbit sql` use your table statistics and query history.
+Run `gcloud auth application-default login` with your **work Google account**, not `gcloud auth login`: the CLI reads Application Default Credentials. Then `followrabbit auth status` shows whether the CLI is signed in.
 
-- Google sign-in is tried first and an API key second. With both present and a domain that is set up, the Google identity is used, even over `--api-key`.
-- If the domain is not set up, the CLI falls back to the API key. With no key it exits 2 with `GOOGLE_DOMAIN_NOT_ENABLED`.
-- Google sign-in does not cover `followrabbit optimize`. Those commands always need a BQ Job Optimizer API key (see [Second key for `optimize`](#second-key-for-optimize)); they use your Google credentials only to read and update scheduled queries in your project.
-- Only user credentials are read. Service account keys and workload identity configurations are ignored, so CI keeps using an API key.
-- `auth status` shows which identity the server used (`auth`: `google` or `api-key`). `auth logout` removes the stored key only; it does not sign you out of Google.
-- Set `FOLLOWRABBIT_GOOGLE_AUTH=off` to never read Google credentials or send the token.
+- Your organisation's Google Workspace domain must be set up with Rabbit. If it is not, the CLI says so; contact your Rabbit representative or [support@followrabbit.ai](mailto:support@followrabbit.ai).
+- Personal Google accounts are not supported.
+- Only user credentials are read. Service account keys and workload identity configurations are not accepted.
+- A `gcloud` configuration moved with `CLOUDSDK_CONFIG` is honoured.
+- On each command that talks to the Rabbit API, the CLI asks Google for an ID token for your account and sends it in the `X-Rabbit-Google-Id-Token` request header. The token proves your email address and Workspace domain to Rabbit; it cannot be used to access Google Cloud. The run is then tied to your organisation's Rabbit account, which lets `followrabbit sql` use your table statistics and query history.
+
+| Command | Purpose |
+|---|---|
+| `followrabbit auth status` | Check whether the CLI is signed in. |
+
+### CI and unattended use
+
+Running the CLI in CI or other unattended automation is not supported yet. Sign-in needs a person's Google login, and service accounts are not accepted. `--fail-on` and the exit codes below still work for a check that a signed-in developer runs locally, for example from a pre-commit hook.
 
 ### Second key for `optimize`
 
-The `optimize` commands talk to a different service, the **Rabbit BQ Job Optimizer**, which has its own keys. Create one in the Rabbit app at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) (feature: BigQuery Job Optimizer) and store it beside the main key:
+`followrabbit sql` does not use this key. Only the `optimize` commands do. They talk to a different service, the **Rabbit BQ Job Optimizer**, which has its own key. Create one in the Rabbit app at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) (feature: BigQuery Job Optimizer) and store it:
 
 ```bash
 followrabbit auth login --optimizer-key <YOUR_OPTIMIZER_KEY>
 ```
 
-`auth status` reports where the optimizer key comes from (`optimizer_key_source`: `file`, `environment` or `none`). It is only read by `followrabbit optimize`; every other command ignores it. The reservations the optimizer may route scheduled queries to are configured on that key in the Rabbit app, not passed on the command line.
+`auth status` reports where the optimizer key comes from (`optimizer_key_source`: `file`, `environment` or `none`). It is only read by `followrabbit optimize`; every other command ignores it. The optimize commands use your Google credentials to read and update scheduled queries in your project. The reservations the optimizer may route scheduled queries to are configured on that key in the Rabbit app, not passed on the command line.
 
 ---
 
@@ -91,7 +78,6 @@ These work with every command:
 | Flag | Description |
 |---|---|
 | `--json` | Emit JSON wrapped in a `{version, command, status, data, error}` envelope. **Auto-enabled whenever stdout is not a TTY** — anything piping or capturing CLI output gets JSON without asking for it. |
-| `--api-key <key>` | Override the stored API key for one invocation. |
 | `--api-url <url>` | Override the API base URL (default: `https://api.agentic.followrabbit.ai`). |
 | `--quiet` | Suppress non-essential output. |
 
@@ -99,22 +85,21 @@ These work with every command:
 
 | Variable | Description |
 |---|---|
-| `FOLLOWRABBIT_API_KEY` | API key override, used instead of stored credentials. Credential-bearing — treat like any secret in CI. |
 | `RABBIT_API_URL` | API base URL override, same effect as `--api-url`. |
 | `RABBIT_CONFIG_DIR` | Override the default config directory (`~/.config/followrabbit/`). |
 | `RABBIT_OPTIMIZER_API_KEY` | BQ Job Optimizer key override for `optimize`, used instead of the stored one. Credential-bearing. |
 | `RABBIT_OPTIMIZER_URL` | BQ Job Optimizer base URL override, same effect as `--optimizer-url`. |
-| `GOOGLE_APPLICATION_CREDENTIALS` | Standard Google ADC override; `optimize` uses it for every GCP call, and Google sign-in reads it when it points at user credentials. |
-| `FOLLOWRABBIT_GOOGLE_AUTH` | Set to `off` to disable Google sign-in (0.6.0+). |
+| `GOOGLE_APPLICATION_CREDENTIALS` | Standard Google ADC override; `optimize` uses it for every GCP call, and sign-in reads it when it points at user credentials. |
+| `CLOUDSDK_CONFIG` | Location of the `gcloud` configuration, if you moved it; the CLI finds your Application Default Credentials there. |
 
 ## Exit codes
 
 | Code | Meaning |
 |---|---|
 | `0` | OK |
-| `2` | Auth — invalid or missing API key. |
+| `2` | Auth — not signed in, or the sign-in was rejected. |
 | `3` | Quota exhausted / rate limited. |
-| `4` | Input — invalid flags or arguments (also the no-browser-login case above). |
+| `4` | Input — invalid flags or arguments. |
 | `5` | Non-2xx response from the API. |
 | `6` | Network error. |
 | `7` | `sql --fail-on` threshold met — a finding at or above the given level exists. |
@@ -136,7 +121,7 @@ followrabbit version
 
 ### `status`
 
-Show API key info and quota usage for the current period.
+Show account info and quota usage for the current period.
 
 ```bash
 followrabbit status
@@ -157,7 +142,7 @@ followrabbit context --dir ./infra --types tf,sql --json
 
 ### `sql`
 
-Deterministic BigQuery cost checks over the SQL you point it at — files, directories, stdin, or an inline query. No model call and no quota spend, so it is meant to run on every save or from a pre-commit hook. Requires **0.2.0** or newer; against an older CLI the command is unknown. Directory runs that include Python files, as described below, need **0.6.0** (see the [troubleshooting note](#troubleshooting) for 0.5.0).
+Deterministic BigQuery cost checks over the SQL you point it at — files, directories, stdin, or an inline query. No model call and no quota spend, so it is meant to run on every save or from a pre-commit hook. Requires **0.2.0** or newer; against an older CLI the command is unknown. Sign-in is Google only from **0.7.0** (see [Authenticate](#authenticate)). Directory runs that include Python files, as described below, need **0.6.0** (see the [troubleshooting note](#troubleshooting) for 0.5.0).
 
 Directories are walked for SQL and Python files; Python files are uploaded so SQL inside Airflow operators is checked too (`--no-python` turns that off). The server decides which files hold SQL, the rest come back as skipped.
 
@@ -167,13 +152,15 @@ followrabbit sql models/ transforms/             # directories, walked for *.sql
 followrabbit sql dags/ --no-python               # directory, without uploading Python files
 cat q.sql | followrabbit sql                     # stdin
 followrabbit sql -q "SELECT * FROM \`p.d.t\`"    # inline SQL
-followrabbit sql models/ --fail-on high --json   # CI gate
+followrabbit sql models/ --assume-bigquery       # treat every SQL file in the directory as BigQuery
+followrabbit sql models/ --fail-on high --json   # exit 7 on a high finding
 ```
 
 | Flag | Description |
 |---|---|
 | `-q, --query <sql>` | Inline SQL instead of paths. |
 | `--no-python` | Do not upload `.py` files found in a directory walk. |
+| `--assume-bigquery` | Treat every SQL file found in a directory as BigQuery instead of skipping files with no recognisable BigQuery syntax as `not_bigquery`. |
 | `--fail-on <level>` | Exit 7 when a finding at or above `high`, `medium`, or `low` exists. Without it, findings never fail the command. |
 | `--all` | Print every finding instead of the first 20. |
 | `--show-skipped` | List skipped files individually with their reason. |
@@ -183,32 +170,17 @@ How inputs are treated:
 
 - A file you name, stdin, and `--query` are checked as BigQuery by declaration — no dialect gate.
 - A directory is walked for `.sql`, `.sqlx` and `.py` files (the suffix match is case-insensitive). Python files are uploaded by default so SQL inside Airflow operator calls in DAG files is checked too; `--no-python` turns that off. The walk does not descend into hidden directories (names starting with `.`) or directories named `node_modules`, `target`, `dbt_packages`, `dbt_modules`, `venv`, `site-packages`, `__pycache__`, `build`, `dist`. A directory you name is always read, so `followrabbit sql target/compiled/` works. `.gitignore` is not read or honoured.
-- Files found in a walk pass through a BigQuery dialect gate; files it does not recognise are skipped with reason `not_bigquery`.
+- Files found in a walk pass through a BigQuery dialect gate; files with no recognisable BigQuery syntax are skipped with reason `not_bigquery`, and the CLI prints a hint when that happened. `--assume-bigquery` turns the gate off and treats every SQL file found in the directory as BigQuery.
 - Python files are parsed on the server to read SQL string literals out of Airflow operator call sites; they are not executed. A file with no SQL the server can read, such as an ordinary Python module, comes back as skipped with reason `no_sql`.
 - Walked `.sqlx` files currently come back as `no_sql` (there is no reader for that type yet). A `.sqlx` file you name explicitly is checked as SQL.
 - Templates are not rendered. A file still carrying `{{`, `{%`, `${`, or `@{` is skipped with reason `unresolved_templating` — run `dbt compile` and point at `target/compiled/`.
-- Other skip reasons: `parse_error`, `too_large` (over 128 KiB), `empty`. The full set is `no_sql`, `not_bigquery`, `unresolved_templating`, `parse_error`, `too_large`, `empty`. Skipped files are always counted in the summary; zero findings with skipped files is not a clean bill of health.
+- A file in which no statement can be parsed is skipped with reason `parse_error`; it is not reported as checked with zero findings.
+- Other skip reasons: `too_large` (over 128 KiB), `empty`. The full set is `no_sql`, `not_bigquery`, `unresolved_templating`, `parse_error`, `too_large`, `empty`. Skipped files are always counted in the summary; zero findings with skipped files is not a clean bill of health.
 - Limits: 128 KiB per file (larger is skipped as `too_large`) and 5000 files per run. A large run is sent in several requests automatically and the progress line on stderr says so: `Checking N files (X SQL, Y Python)...`. Over 5000 files nothing is sent and the command fails with `TOO_MANY_FILES` (with `--json` the error carries per-folder counts); run it per subfolder or pass `--no-python`.
 
 Each finding carries the file, line span, level (`high` / `medium` / `low`), a message, an optional fix, and a `measure_first` flag meaning measure the impact before applying the fix.
 
-**Data sent:** the full contents and the path (as given, or relative to how the directory was named) of every file you name and of every `.sql`, `.sqlx` and `.py` file a directory walk finds, plus stdin and inline `--query` text. Running `followrabbit sql` on a directory therefore uploads the contents of every Python file under it, whether or not it contains SQL, unless you pass `--no-python`; the walk skips only the directories listed above and does not honour `.gitignore`. The server decides which uploaded files hold SQL. The SQL is analysed in memory and not stored. The server keeps one record per run — file and finding counts and the rule ids that fired — plus a keyed hash of each file path only when the run is tied to a customer account (an API key that belongs to one, or Google sign-in); other runs leave no path information.
-
-### `recos list`
-
-List saved cost-optimization recommendations for a repository.
-
-```bash
-followrabbit recos list                                 # repo auto-detected from git remote
-followrabbit recos list --repo https://github.com/acme/infra
-followrabbit recos list --type rightsizing --status open
-```
-
-| Flag | Description |
-|---|---|
-| `--repo <url>` | Repository URL (defaults to the git `origin` remote). |
-| `--type <filter>` | `rightsizing`, `idle_resource`, `commitment`. |
-| `--status <filter>` | `open`, `applied`, `dismissed`. |
+**Data sent:** the full contents and the path (as given, or relative to how the directory was named) of every file you name and of every `.sql`, `.sqlx` and `.py` file a directory walk finds, plus stdin and inline `--query` text. Running `followrabbit sql` on a directory therefore uploads the contents of every Python file under it, whether or not it contains SQL, unless you pass `--no-python`; the walk skips only the directories listed above and does not honour `.gitignore`. The server decides which uploaded files hold SQL. The SQL is analysed in memory and not stored. The server keeps one record per run — file and finding counts and the rule ids that fired — plus a keyed hash of each file path only when the run is tied to a customer account (through your Google sign-in); other runs leave no path information.
 
 ### `optimize bq-compute-pricing-model scheduled-queries`
 
@@ -325,7 +297,7 @@ The cost is the same as before the conversion: the `INSERT` bills exactly the by
 
 | What | Why |
 |---|---|
-| Optimizer key stored (`auth login --optimizer-key`, or `RABBIT_OPTIMIZER_API_KEY`) | Authenticates the decision calls. Created at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys); the reservations to consider are configured on the key. |
+| Optimizer key stored (`auth login --optimizer-key`, or `RABBIT_OPTIMIZER_API_KEY`); `followrabbit sql` does not need it | Authenticates the decision calls. Created at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys); the reservations to consider are configured on the key. |
 | Google Application Default Credentials (`gcloud auth application-default login`, or `GOOGLE_APPLICATION_CREDENTIALS`) | Every GCP call. |
 | `bigquery.transfers.get` and `bigquery.transfers.update` on the project (`roles/bigquery.admin` has both) | List and patch scheduled queries. |
 | `roles/iam.serviceAccountTokenCreator` on each service account your scheduled queries run as | Lets the CLI test that account's reservation access before writing. Without it the check reports `unverified` and the apply still proceeds. |
@@ -514,7 +486,7 @@ Each rewritten script is dry-run during planning, so `recommend` already shows a
 
 ### Troubleshooting
 
-**exit 2, `no optimizer API key`** — store one with `followrabbit auth login --optimizer-key <KEY>`, or set `RABBIT_OPTIMIZER_API_KEY`. The main CLI key does not work here.
+**exit 2, `no optimizer API key`** — store one with `followrabbit auth login --optimizer-key <KEY>`, or set `RABBIT_OPTIMIZER_API_KEY`.
 
 **exit 2, `the optimizer rejected the API key`** — the key is not a BQ Job Optimizer key, or points at another environment. Create one at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys).
 
@@ -542,9 +514,9 @@ Each rewritten script is dry-run during planning, so `recommend` already shows a
 
 ## Troubleshooting
 
-**`AUTH_ERROR` / exit 2** — the stored key is missing or the server rejected it. Run `followrabbit auth status` to see which; re-login with `followrabbit auth login --key <KEY>`.
+**`AUTH_ERROR` / exit 2** — the CLI is not signed in, or the sign-in was rejected. Run `gcloud auth application-default login` with your work Google account (not `gcloud auth login`), then `followrabbit auth status`. If your organisation's Google Workspace domain is not set up with Rabbit, the CLI says so; contact your Rabbit representative or support@followrabbit.ai. Personal Google accounts are not supported.
 
-**Exit 3** — your key's quota for the period is exhausted or you are rate limited. Check usage with `followrabbit status`; quota is managed at [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai).
+**Exit 3** — your quota for the period is exhausted or you are rate limited. Check usage with `followrabbit status`.
 
 **`unknown command "sql"`** — the installed CLI predates 0.2.0. Upgrade with the matching tool (see [Install](#install)). If the CLI is current but reports `NOT_SUPPORTED` (exit 5), the `--api-url` you point at does not serve the command yet.
 

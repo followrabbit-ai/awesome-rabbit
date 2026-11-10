@@ -23,30 +23,33 @@ This repository aims to provide tools, scripts, and code snippets for current an
   - The **Rabbit BQ Reverse Proxy** deployment package. A transparent reverse proxy that sits between your clients (Looker, dbt Cloud, Airflow, etc.) and the BigQuery REST API. It intercepts job submissions (`jobs.insert`, `jobs.query`), calls the Rabbit BQ Job Optimizer to automatically optimize job configuration (e.g. reservation routing), and streams everything else through unchanged with a fail-open design. Includes ready-to-use Terraform for Cloud Run deployment (pulling Rabbit's published container image) and a standalone performance test tool.
 
 - [followrabbit-cli](followrabbit-cli/):
-  - Reference for the `followrabbit` CLI — install (brew / npm / curl), authentication, every shipped command and flag, environment variables, exit codes, and troubleshooting. Verified against CLI 0.3.0; the `sql` section describes 0.6.0. Includes the deep-dive on `optimize sq-pricing`, which sets the optimal pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a project using the Rabbit BQ Job Optimizer — the scheduled-query counterpart of the reverse proxy above.
+  - Reference for the `followrabbit` CLI — install (brew / npm / curl), authentication, every shipped command and flag, environment variables, exit codes, and troubleshooting. The `sql` and `auth` sections describe CLI 0.7.0; the rest was verified against 0.3.0. Includes the deep-dive on `optimize sq-pricing`, which sets the optimal pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a project using the Rabbit BQ Job Optimizer — the scheduled-query counterpart of the reverse proxy above.
 
 - [vpc-sc-helper](vpc-sc-helper/):
   - A read-only bash helper for customers whose VPC Service Controls perimeters block Rabbit's data loading. Given the violation id(s) from Rabbit's error reports, it finds the denial in your audit logs, names the exact perimeter, and prints the minimal ingress/egress rule plus dry-run-first `gcloud` commands to apply it.
 
 # Quickstart: CLI
 
-The `followrabbit` CLI is what both the plugins and any terminal/CI workflow drive. Zero to first check:
+The `followrabbit` CLI is what both the plugins and any terminal workflow drive. Zero to first check:
 
 ```bash
 # 1. Install (Homebrew shown; npm and curl installers in the CLI reference)
 brew trust followrabbit-ai/tap        # required on Homebrew 6.x+
 brew install followrabbit-ai/tap/followrabbit
 
-# 2. Get an API key at https://subscriptions.agentic.followrabbit.ai, then:
-followrabbit auth login --key <YOUR_API_KEY>
-# (0.6.0+: if your organisation is set up for Google sign-in with Rabbit,
-#  `gcloud auth application-default login` replaces this step. Not for
-#  `optimize`, which always needs its own API key)
+# 2. Sign in with your work Google account (not `gcloud auth login`), then check
+gcloud auth application-default login
+followrabbit auth status
+# Your organisation's Google Workspace domain must be set up with Rabbit;
+# personal Google accounts are not supported. `optimize` also needs its own
+# key, see the CLI reference.
 
 # 3. Deterministic BigQuery SQL check — no model call, no quota spend (0.2.0+)
 # A directory is walked for .sql, .sqlx and .py files and all of them are uploaded; add --no-python to skip the .py files
 followrabbit sql models/
 ```
+
+Running the CLI in CI or other unattended automation is not supported yet, because sign-in needs a person's Google login.
 
 Full command, flag, environment-variable, and troubleshooting documentation: [followrabbit-cli/README.md](followrabbit-cli/).
 
@@ -56,9 +59,8 @@ This repository includes plugins for **Claude Code**, **Cursor**, and **OpenAI C
 
 ## Prerequisites
 
-You'll need the `followrabbit` CLI installed and authenticated locally before invoking the plugin — see the [quickstart](#quickstart-cli) above. The scheduled-query pricing skill uses its own credentials, listed under [Skills](#skills), not the key from the quickstart.
+You'll need the `followrabbit` CLI installed and signed in locally before invoking the plugin — see the [quickstart](#quickstart-cli) above. The scheduled-query pricing skill also needs its own optimizer key, listed under [Skills](#skills).
 
-- API keys and pricing: [subscriptions.agentic.followrabbit.ai](https://subscriptions.agentic.followrabbit.ai)
 - Privacy policy: [followrabbit.ai/en/rabbit-privacy-policy](https://followrabbit.ai/en/rabbit-privacy-policy)
 - Terms of service: [followrabbit.ai/en/rabbit-general-terms-and-conditions](https://followrabbit.ai/en/rabbit-general-terms-and-conditions)
 
@@ -97,7 +99,7 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 ## Skills
 
 - **optimize-bq-compute-pricing-model-scheduled-queries** — Sets the optimal compute pricing model (slot reservation or on-demand) on every BigQuery scheduled query in a GCP project by driving `followrabbit optimize sq-pricing` (CLI 0.3.0+). Always runs `recommend` first, asks before `apply --confirm`, verifies with `status`, and can `revert`. Needs a BQ Job Optimizer API key from [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) and Google Application Default Credentials. User-invocable via `/followrabbit:optimize-bq-compute-pricing-model-scheduled-queries`.
-- **sql-review** — Deterministic BigQuery SQL best-practice checks via `followrabbit sql` (CLI 0.2.0+; 0.6.0+ for directory runs that include Python DAG files). No LLM and no LLM quota — fast enough to run on every iteration. User-invocable via `/followrabbit:sql-review`.
+- **sql-review** — Deterministic BigQuery SQL best-practice checks via `followrabbit sql` (CLI 0.2.0+; 0.6.0+ for directory runs that include Python DAG files; Google sign-in only from 0.7.0). No LLM and no LLM quota — fast enough to run on every iteration. User-invocable via `/followrabbit:sql-review`.
 
 ## Agents
 
@@ -108,11 +110,10 @@ Alternatively, inside Codex run `/plugins`, add a new marketplace pointing at th
 The plugin skills and agents drive the local `followrabbit` CLI, which talks to `https://api.agentic.followrabbit.ai` (default; overridable with `--api-url`) over HTTPS. Per command:
 
 - `followrabbit context` — local only, no API call.
-- `followrabbit status` — sends only your credentials (API key, and the Google ID token described below when present).
-- `followrabbit recos list` — sends your git `origin` remote URL (auto-detected) as a `?repo=` query parameter.
-- `followrabbit sql` — sends the full contents and the path of every file you name, plus stdin and inline `-q` query text. Pointed at a directory, it walks it and sends every `.sql`, `.sqlx` and `.py` file it finds, so the contents of every Python file under that directory are uploaded unless you pass `--no-python`. The walk skips hidden directories and `node_modules`, `target`, `dbt_packages`, `dbt_modules`, `venv`, `site-packages`, `__pycache__`, `build` and `dist` (a directory you name explicitly is always read); `.gitignore` is not honoured. The server decides which uploaded files hold SQL and reads SQL string literals out of Airflow operator calls in Python files without executing them; files with no SQL it can read come back as skipped. The server keeps per-run counts and rule ids, and a keyed path hash only for keys tied to a customer account — see the [CLI reference](followrabbit-cli/#sql).
+- `followrabbit status` — sends only your credentials (the Google ID token described below).
+- `followrabbit sql` — sends the full contents and the path of every file you name, plus stdin and inline `-q` query text. Pointed at a directory, it walks it and sends every `.sql`, `.sqlx` and `.py` file it finds, so the contents of every Python file under that directory are uploaded unless you pass `--no-python`. The walk skips hidden directories and `node_modules`, `target`, `dbt_packages`, `dbt_modules`, `venv`, `site-packages`, `__pycache__`, `build` and `dist` (a directory you name explicitly is always read); `.gitignore` is not honoured. The server decides which uploaded files hold SQL and reads SQL string literals out of Airflow operator calls in Python files without executing them; files with no SQL it can read come back as skipped. The server keeps per-run counts and rule ids, and a keyed path hash only for runs tied to a customer account — see the [CLI reference](followrabbit-cli/#sql).
 - `followrabbit optimize sq-pricing` (`recommend` / `apply`) — sends each BigQuery scheduled query's Data Transfer config in scope (name, display name, schedule, the full SQL and other parameters) plus the project id to the Rabbit BQ Job Optimizer at `https://api.followrabbit.ai/bq-job-optimizer` (overridable with `--optimizer-url`), authenticated with a separate BQ Job Optimizer API key in the `rabbit-api-key` header. Against Google Cloud, with your Application Default Credentials, it lists, reads and (on `--confirm`) patches scheduled queries, and runs one tiny `SELECT 1` probe job per run-as identity and reservation in your project to verify reservation access before writing. `status` and `revert` contact only Google Cloud — see the [CLI reference](followrabbit-cli/#deep-dive-optimize-sq-pricing).
 
-API keys are stored locally under `~/.config/followrabbit/credentials.json` (mode `0600`) and travel only in the `X-Rabbit-Api-Key` request header (never in bodies or URLs). From CLI 0.6.0, when Google Application Default Credentials for a user are present on the machine (`gcloud auth application-default login`), `sql`, `recos list`, `status` and `auth status` also send a Google ID token for that account in the `X-Rabbit-Google-Id-Token` header. It carries your email address and Google Workspace domain so Rabbit can sign you in without an API key; it cannot be used to access Google Cloud, and it is not stored by the CLI. Set `FOLLOWRABBIT_GOOGLE_AUTH=off` to turn this off — see the [CLI reference](followrabbit-cli/#google-sign-in-060). Every request also includes a `User-Agent: followrabbit-cli/<version>` header. The CLI generates no telemetry, analytics, error-reporting, or update-check traffic of its own; server-side, `followrabbit sql` keeps the run record described above.
+When you are signed in with Google (`gcloud auth application-default login`), `sql`, `status` and `auth status` send a Google ID token for that account in the `X-Rabbit-Google-Id-Token` header. It carries your email address and Google Workspace domain so Rabbit can sign you in; it cannot be used to access Google Cloud, and it is not stored by the CLI. See the [CLI reference](followrabbit-cli/#authenticate). The optimizer key used by `optimize` is stored locally and sent only to the BQ Job Optimizer. Every request also includes a `User-Agent: followrabbit-cli/<version>` header. The CLI generates no telemetry, analytics, error-reporting, or update-check traffic of its own; server-side, `followrabbit sql` keeps the run record described above.
 
 See [followrabbit.ai/en/rabbit-privacy-policy](https://followrabbit.ai/en/rabbit-privacy-policy) for full details.
