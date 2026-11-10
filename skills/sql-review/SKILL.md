@@ -98,8 +98,10 @@ each finding (`id`, `file`, `start_line`, `end_line`, `level` high / medium /
 low, `message`, optional `fix`, `measure_first`) and `summary` holds `findings`,
 `checked`, `skipped` and `skipped_by_reason`. Add `--files` for the per-file
 list, for example to name the skipped files, and `--all` when the listing says
-it is capped. Older CLIs return a `files` list holding each file's findings, and
-no `id`: read findings from there; everything below works except feedback.
+it is capped. Older CLIs always include the per-file list (`files`, each with a
+`status` and a skip `reason`), have no `skipped_by_reason`, and their findings
+carry no `id`: count the skip reasons from `files`; everything below works
+except feedback.
 
 Walked files pass a BigQuery dialect gate; named files, `-q` and stdin do not.
 Skip reasons: `no_sql` (ordinary Python modules, and walked `.sqlx` files),
@@ -137,8 +139,9 @@ and say what would settle it (for example the table's size).
 After presenting, send one verdict per judged finding, all in one call. Do not
 ask the user each time. Verdicts: `useful` for a kept finding, `wrong` for one
 set aside because it does not hold here, `intentional` for one set aside because
-the pattern is deliberate. Each gets a one-line reason (at most 300 characters) about why the
-finding did or did not apply. No SQL text, no names of people, no secrets.
+the pattern is deliberate. Each gets a one-line reason (at most 300 characters)
+about why the finding did or did not apply. No SQL text, no names of people, no
+secrets.
 
 ```bash
 followrabbit sql feedback <<'EOF'

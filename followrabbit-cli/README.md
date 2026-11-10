@@ -211,7 +211,7 @@ JSON output, under `data`:
 }
 ```
 
-`fix` is present only when there is one. The per-file list appears only with `--files`. CLIs before the release after 0.6.x return a `files` list holding each file's findings instead, and no `id`.
+`fix` is present only when there is one. The per-file list appears only with `--files`. CLIs up to 0.6.x always include the per-file list (`files`, each entry with a `status` and, when skipped, a `reason`), have no `skipped_by_reason`, and their findings carry no `id`.
 
 **Data sent:** the full contents and the path (as given, or relative to how the directory was named) of every file you name and of every `.sql`, `.sqlx` and `.py` file a directory walk finds, plus stdin and inline `--query` text. Running `followrabbit sql` on a directory therefore uploads the contents of every Python file under it, whether or not it contains SQL, unless you pass `--no-python`; the walk skips only the directories listed above and does not honour `.gitignore`. The server decides which uploaded files hold SQL. The SQL is analysed in memory and not stored. The server keeps one record per run — file and finding counts and the rule ids that fired — plus a keyed hash of each file path only when the run is tied to a customer account (an API key that belongs to one, or Google sign-in); other runs leave no path information. Like every request, a `sql` run is also recorded with the signed-in email, key id, CLI version and outcome (see [What Rabbit records per request](#what-rabbit-records-per-request)).
 
