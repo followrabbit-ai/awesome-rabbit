@@ -14,7 +14,7 @@
       "version": "1.5.1",
       "category": "infrastructure",
       "tags": ["finops", "gcp", "terraform", "cost-optimization", "bigquery", "gke"],
-      "homepage": "https://subscriptions.agentic.followrabbit.ai"
+      "homepage": "https://github.com/followrabbit-ai/awesome-rabbit#get-access"
     }
   ]
 }
