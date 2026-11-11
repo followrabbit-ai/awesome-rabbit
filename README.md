@@ -28,6 +28,16 @@ This repository aims to provide tools, scripts, and code snippets for current an
 - [vpc-sc-helper](vpc-sc-helper/):
   - A read-only bash helper for customers whose VPC Service Controls perimeters block Rabbit's data loading. Given the violation id(s) from Rabbit's error reports, it finds the denial in your audit logs, names the exact perimeter, and prints the minimal ingress/egress rule plus dry-run-first `gcloud` commands to apply it.
 
+# Get access
+
+The `followrabbit` CLI and the coding agent plugins are for Rabbit customers.
+
+- **Rabbit customer**: sign in with your work Google account (`gcloud auth application-default login`), then run `followrabbit auth status`. Your organisation's Google Workspace domain has to be set up with Rabbit. If sign-in says it is not, write to success@followrabbit.ai.
+- **Not a customer yet**: sign up at [subscriptions.followrabbit.ai](https://subscriptions.followrabbit.ai/).
+- **API keys**: new CLI API keys are not available at the moment. Sign-in needs a person's Google login, so if you need the CLI in CI or other unattended automation, write to success@followrabbit.ai.
+
+The key for `followrabbit optimize` is a different one, a BigQuery Job Optimizer key created at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys).
+
 # Quickstart: CLI
 
 The `followrabbit` CLI is what both the plugins and any terminal/CI workflow drive. Zero to first check:
