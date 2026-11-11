@@ -32,9 +32,9 @@ This repository aims to provide tools, scripts, and code snippets for current an
 
 The `followrabbit` CLI and the coding agent plugins are for Rabbit customers.
 
-- **Rabbit customer**: sign in with your work Google account (`gcloud auth application-default login`), then run `followrabbit auth status`. Your organisation's Google Workspace domain has to be set up with Rabbit. If sign-in says it is not, write to success@followrabbit.ai.
+- **Rabbit customer**: sign in with your work Google account (`gcloud auth application-default login`), then run `followrabbit auth status`. Your organisation's Google Workspace domain has to be set up with Rabbit. If sign-in says it is not, write to support@followrabbit.ai.
 - **Not a customer yet**: sign up at [subscriptions.followrabbit.ai](https://subscriptions.followrabbit.ai/).
-- **CI and other unattended use**: sign-in needs a person's Google login. If you need the CLI in CI or other unattended automation, write to success@followrabbit.ai.
+- **CI and other unattended use**: sign-in needs a person's Google login. If you need the CLI in CI or other unattended automation, write to support@followrabbit.ai.
 
 The key for `followrabbit optimize` is a different one, a BigQuery Job Optimizer key created at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys).
 
