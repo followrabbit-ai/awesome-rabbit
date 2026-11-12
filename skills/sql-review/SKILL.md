@@ -19,10 +19,10 @@ user-invocable: true
 `followrabbit sql` sends SQL to the Rabbit API, which runs deterministic
 BigQuery best-practice checks in memory and returns findings. Your job: give it
 the right input, judge each finding against the query it flags, present what
-matters, and send one verdict per finding back.
+matters, and send a verdict back for each finding you decided.
 
 Requires CLI **0.2.0+**; **0.6.0+** for directory runs that include Python
-files; finding ids and `sql feedback` come with the release after 0.6.x. If
+files; **0.7.0+** for finding ids and `sql feedback`. If
 `followrabbit sql --help` fails with an unknown-command error, tell the user to
 upgrade (`brew upgrade followrabbit-ai/tap/followrabbit`) and stop. The CLI must
 be authenticated (`followrabbit auth status`): an API key, or from 0.6.0 Google
@@ -45,7 +45,8 @@ The SQL text is analysed in memory and not kept. Rabbit keeps finding metadata,
 a hashed file path, and the verdicts sent with `sql feedback`, to measure which
 recommendations are useful. For each request it also records the signed-in
 email (or the API key owner's email), the key id, the CLI version, the command
-and its outcome. Nothing else from the repository is sent.
+and its outcome; the email is kept for up to 13 months. Nothing else from the
+repository is sent.
 
 ## 1. Choose the input
 
@@ -53,8 +54,9 @@ and its outcome. Nothing else from the repository is sent.
 `dbt_project.yml` sits at or above the SQL in scope. The project name is its
 `name:` value; compiled SQL is under `target/compiled/<name>/` with the same
 relative path as the model (`models/marts/orders.sql` becomes
-`target/compiled/<name>/models/marts/orders.sql`; a `target-path:` in
-`dbt_project.yml` replaces `target`).
+`target/compiled/<name>/models/marts/orders.sql`). `target` is the default:
+`--target-path`, the `DBT_TARGET_PATH` environment variable, or the
+deprecated `target-path:` key in `dbt_project.yml` put it elsewhere.
 
 1. If the compiled files for the models in scope exist and are newer than those
    model files (compare with `ls -l`), check the compiled files. Name them or
@@ -71,7 +73,7 @@ relative path as the model (`models/marts/orders.sql` becomes
    for a whole clause is skipped.) Describe the CI path: a step after the
    pipeline's own `dbt compile` running
    `followrabbit sql target/compiled/<name>/ --fail-on high`, authenticated
-   with an API key in `FOLLOWRABBIT_API_KEY`.
+   with an API key (for CI access write to support@followrabbit.ai).
 4. Report each finding against the model source file, not the compiled path.
    Compiled line numbers differ: read the model and give the line of the flagged
    statement there.
@@ -118,8 +120,9 @@ reconciliation, a min or max over all time); the table is known to be small;
 exact results are required where an approximation was suggested; the ordering
 is the purpose of the query.
 
-Do not invent facts about table sizes. When you cannot tell, keep the finding
-and say what would settle it (for example the table's size).
+Do not invent facts about table sizes. When you cannot tell, keep the finding,
+mark it undecided, and say what would settle it (for example the table's
+size).
 
 ## 4. Present
 
@@ -133,13 +136,19 @@ and say what would settle it (for example the table's size).
 - When nothing relevant remains, say so plainly in one or two sentences, with
   what was checked and what was skipped.
 - Offer to apply straightforward fixes; let the user decide.
+- If step 5 will send feedback and you have not said so yet in this session,
+  end with one line: a verdict per finding is sent to Rabbit, and
+  `FOLLOWRABBIT_NO_FEEDBACK=1` turns this off. This comes before the first
+  send.
 
 ## 5. Send feedback
 
-After presenting, send one verdict per judged finding, all in one call. Do not
-ask the user each time. Verdicts: `useful` for a kept finding, `wrong` for one
-set aside because it does not hold here, `intentional` for one set aside because
-the pattern is deliberate. Each gets a one-line reason (at most 300 characters)
+After presenting, send one verdict for each finding you decided, all in one
+call. Do not ask the user each time. Verdicts: `useful` for a finding kept
+because it matters here, `wrong` for one set aside because it does not hold
+here, `intentional` for one set aside because the pattern is deliberate. A
+finding kept only because you could not tell gets no verdict. Each verdict
+gets a one-line reason (at most 300 characters)
 about why the finding did or did not apply. No SQL text, no names of people, no
 secrets.
 
@@ -151,9 +160,8 @@ EOF
 
 Skip this step when `FOLLOWRABBIT_NO_FEEDBACK=1` is set, when findings carry
 no `id`, or when `followrabbit sql feedback --help` fails or shows only the
-general `sql` help. If the send fails, say so in one line; the review still
-stands. The first time in a session, tell the user in one line that verdicts are
-sent to Rabbit and that `FOLLOWRABBIT_NO_FEEDBACK=1` turns this off.
+general `sql` help; the notice in step 4 is then left out too. If the send
+fails, say so in one line; the review still stands.
 
 ## CI usage
 

@@ -2,7 +2,7 @@
 
 Reference for the `followrabbit` command-line tool — the entrypoint for Rabbit cost-optimization workflows that run from a terminal, a CI pipeline, or an AI coding agent.
 
-Everything below except the `sql` section was verified against the shipped binary **v0.3.0** by running the commands. The `sql` section describes CLI **0.6.0**; finding ids, `--files` and [`sql feedback`](#sql-feedback) come with the release after 0.6.x (they are there when `followrabbit sql feedback --help` describes the feedback command). For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
+Everything below except the `sql` section was verified against the shipped binary **v0.3.0** by running the commands. The `sql` section describes CLI **0.6.0**; finding ids, `--files` and [`sql feedback`](#sql-feedback) come with **0.7.0** (they are there when `followrabbit sql feedback --help` describes the feedback command). For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
 
 ---
 
@@ -86,7 +86,7 @@ followrabbit auth login --optimizer-key <YOUR_OPTIMIZER_KEY>
 
 ## What Rabbit records per request
 
-For every request to the FollowRabbit API, Rabbit records the signed-in email (the Google account email, or the email of the API key's owner), the key id, the CLI version, the command and its outcome. The email is kept for 13 months. `optimize` talks to the BQ Job Optimizer instead and is not covered here.
+For every request to the FollowRabbit API, Rabbit records the signed-in email (the Google account email, or the email of the API key's owner), the key id, the CLI version, the command and its outcome. The email is kept for up to 13 months. `optimize` talks to the BQ Job Optimizer instead and is not covered here.
 
 ## Global flags
 
