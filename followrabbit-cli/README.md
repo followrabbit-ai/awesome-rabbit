@@ -2,7 +2,7 @@
 
 Reference for the `followrabbit` command-line tool — the entrypoint for Rabbit cost-optimization workflows that run from a terminal, a CI pipeline, or an AI coding agent.
 
-Everything below except the `sql` section was verified against the shipped binary **v0.3.0** by running the commands. The `sql` section describes CLI **0.6.0**. For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
+Everything below except the `sql` section was verified against the shipped binary **v0.3.0** by running the commands. The `sql` section describes CLI **0.6.0**; finding ids, `--files` and [`sql feedback`](#sql-feedback) come with **0.7.0** (they are there when `followrabbit sql feedback --help` describes the feedback command). For usage from inside an AI coding agent (Claude Code / Cursor / OpenAI Codex), see the [plugin section of the main README](../README.md#coding-agent-plugins) — the plugin skills shell out to this CLI.
 
 ---
 
@@ -84,6 +84,10 @@ followrabbit auth login --optimizer-key <YOUR_OPTIMIZER_KEY>
 
 ---
 
+## What Rabbit records per request
+
+For every request to the FollowRabbit API, Rabbit records the signed-in email (the Google account email, or the email of the API key's owner), the key id, the CLI version, the command and its outcome. The email is kept for up to 13 months. `optimize` talks to the BQ Job Optimizer instead and is not covered here.
+
 ## Global flags
 
 These work with every command:
@@ -106,6 +110,7 @@ These work with every command:
 | `RABBIT_OPTIMIZER_URL` | BQ Job Optimizer base URL override, same effect as `--optimizer-url`. |
 | `GOOGLE_APPLICATION_CREDENTIALS` | Standard Google ADC override; `optimize` uses it for every GCP call, and Google sign-in reads it when it points at user credentials. |
 | `FOLLOWRABBIT_GOOGLE_AUTH` | Set to `off` to disable Google sign-in (0.6.0+). |
+| `FOLLOWRABBIT_NO_FEEDBACK` | Set to `1` to make `sql feedback` send nothing; it exits 0 and says so. |
 
 ## Exit codes
 
@@ -177,6 +182,7 @@ followrabbit sql models/ --fail-on high --json   # CI gate
 | `--fail-on <level>` | Exit 7 when a finding at or above `high`, `medium`, or `low` exists. Without it, findings never fail the command. |
 | `--all` | Print every finding instead of the first 20. |
 | `--show-skipped` | List skipped files individually with their reason. |
+| `--files` | Add the per-file list to `--json` output. |
 | `--stdin-filename <name>` | Name to report for stdin or `--query` input. |
 
 How inputs are treated:
@@ -186,13 +192,48 @@ How inputs are treated:
 - Files found in a walk pass through a BigQuery dialect gate; files it does not recognise are skipped with reason `not_bigquery`.
 - Python files are parsed on the server to read SQL string literals out of Airflow operator call sites; they are not executed. A file with no SQL the server can read, such as an ordinary Python module, comes back as skipped with reason `no_sql`.
 - Walked `.sqlx` files currently come back as `no_sql` (there is no reader for that type yet). A `.sqlx` file you name explicitly is checked as SQL.
-- Templates are not rendered. A file still carrying `{{`, `{%`, `${`, or `@{` is skipped with reason `unresolved_templating` — run `dbt compile` and point at `target/compiled/`.
+- Templates are not rendered. A `${...}` or `{{ ... }}` placeholder that stands for a name or a value is checked as written. A placeholder or Jinja block that stands for a whole clause makes the file skip with reason `unresolved_templating`. A raw dbt model whose only Jinja is `ref()` or `source()` is checked, with less information. For dbt, run `dbt compile` and pass `target/compiled/<project>/`; for other templated SQL, check the rendered SQL your pipeline submits, for example on stdin.
 - Other skip reasons: `parse_error`, `too_large` (over 128 KiB), `empty`. The full set is `no_sql`, `not_bigquery`, `unresolved_templating`, `parse_error`, `too_large`, `empty`. Skipped files are always counted in the summary; zero findings with skipped files is not a clean bill of health.
 - Limits: 128 KiB per file (larger is skipped as `too_large`) and 5000 files per run. A large run is sent in several requests automatically and the progress line on stderr says so: `Checking N files (X SQL, Y Python)...`. Over 5000 files nothing is sent and the command fails with `TOO_MANY_FILES` (with `--json` the error carries per-folder counts); run it per subfolder or pass `--no-python`.
 
 Each finding carries the file, line span, level (`high` / `medium` / `low`), a message, an optional fix, and a `measure_first` flag meaning measure the impact before applying the fix.
 
-**Data sent:** the full contents and the path (as given, or relative to how the directory was named) of every file you name and of every `.sql`, `.sqlx` and `.py` file a directory walk finds, plus stdin and inline `--query` text. Running `followrabbit sql` on a directory therefore uploads the contents of every Python file under it, whether or not it contains SQL, unless you pass `--no-python`; the walk skips only the directories listed above and does not honour `.gitignore`. The server decides which uploaded files hold SQL. The SQL is analysed in memory and not stored. The server keeps one record per run — file and finding counts and the rule ids that fired — plus a keyed hash of each file path only when the run is tied to a customer account (an API key that belongs to one, or Google sign-in); other runs leave no path information.
+JSON output, under `data`:
+
+```json
+{
+  "findings": [
+    {"id": "<opaque id>", "file": "models/orders.sql", "start_line": 12, "end_line": 18,
+     "level": "high", "message": "...", "fix": "...", "measure_first": false}
+  ],
+  "summary": {"findings": 1, "checked": 40, "skipped": 3,
+              "skipped_by_reason": {"unresolved_templating": 2, "no_sql": 1}}
+}
+```
+
+`fix` is present only when there is one. The per-file list appears only with `--files`. CLIs up to 0.6.x always include the per-file list (`files`, each entry with a `status` and, when skipped, a `reason`), have no `skipped_by_reason`, and their findings carry no `id`.
+
+**Data sent:** the full contents and the path (as given, or relative to how the directory was named) of every file you name and of every `.sql`, `.sqlx` and `.py` file a directory walk finds, plus stdin and inline `--query` text. Running `followrabbit sql` on a directory therefore uploads the contents of every Python file under it, whether or not it contains SQL, unless you pass `--no-python`; the walk skips only the directories listed above and does not honour `.gitignore`. The server decides which uploaded files hold SQL. The SQL is analysed in memory and not stored. The server keeps one record per run — file and finding counts and the rule ids that fired — plus a keyed hash of each file path only when the run is tied to a customer account (an API key that belongs to one, or Google sign-in); other runs leave no path information. Like every request, a `sql` run is also recorded with the signed-in email, key id, CLI version and outcome (see [What Rabbit records per request](#what-rabbit-records-per-request)).
+
+### `sql feedback`
+
+Tells Rabbit whether `sql` findings were useful. Reads a JSON list from stdin, one item per finding:
+
+```bash
+followrabbit sql feedback <<'EOF'
+[{"id": "<finding id>", "verdict": "intentional", "reason": "full scan is the point: reconciliation over all history"}]
+EOF
+```
+
+| Field | Value |
+|---|---|
+| `id` | The finding's `id` from `followrabbit sql --json`. |
+| `verdict` | `useful`, `wrong` (the finding does not hold for this query) or `intentional` (the pattern is deliberate). |
+| `reason` | One line, at most 300 characters. |
+
+Same authentication as `sql`. The sql-review skill runs this after presenting results. `FOLLOWRABBIT_NO_FEEDBACK=1` makes the command send nothing and exit 0.
+
+**Data sent:** the finding id, the verdict and the reason, nothing else. Rabbit keeps them to measure which recommendations are useful.
 
 ### `recos list`
 
