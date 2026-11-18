@@ -64,6 +64,47 @@ Before deploying, ensure you have:
   - `gcloud auth login` — for gcloud CLI commands
   - `gcloud auth application-default login` — Terraform's Google provider authenticates via [Application Default Credentials](https://cloud.google.com/docs/authentication/application-default-credentials) (ADC), which is separate from your gcloud CLI login. Without ADC, `terraform plan`/`apply` fails with a credentials error.
 4. **A Rabbit API key** — create one yourself in the Rabbit UI at [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys) (no need to contact Rabbit support). Without it the proxy runs in pass-through mode (no optimization).
+5. **On-demand reservation overrides allowed in BigQuery** — set `reservation_override_mode` to `ALLOW_ANY_OVERRIDE` on every project that runs jobs through the proxy, in every region those jobs run in (or once per region on the organization). See [Allowing on-demand reservation overrides](#allowing-on-demand-reservation-overrides) below.
+
+### Allowing on-demand reservation overrides
+
+When the optimizer decides a job is cheaper on-demand than on your reservation, the proxy adds `"reservation": "none"` to the job. That is a per-job *reservation override*: it tells BigQuery to ignore the project's reservation assignment and bill this one job on-demand.
+
+BigQuery gates such overrides with the regional [`reservation_override_mode`](https://docs.cloud.google.com/bigquery/docs/default-configuration) configuration setting (Preview):
+
+| Value | Effect |
+| --- | --- |
+| `ALLOW_ANY_OVERRIDE` | All overrides are allowed, including forcing on-demand (`none`). **Required for the optimizer.** |
+| `DENY_OVERRIDE_TO_NONE` (default) | Overrides to another reservation are allowed, but overrides to on-demand (`none`) fail. |
+| `DENY_ANY_OVERRIDE` | Any attempt to override the assigned reservation fails. |
+
+With the default, BigQuery **rejects** every job the optimizer routes to on-demand — the job fails, it does not fall back to the reservation:
+
+```
+Override to 'none' is not enabled. The option 'reservation_override_mode' is set to 'RESERVATION_OVERRIDE_MODE_UNSPECIFIED'.
+```
+
+Enable it before routing production traffic through the proxy. The setting is **per region**, so run the statement once for each region your jobs run in (`region-eu`, `region-us`, `region-europe-west1`, ...):
+
+```sql
+-- Per project: repeat for every project that runs jobs through the proxy
+ALTER PROJECT `YOUR_PROJECT`
+SET OPTIONS (`region-eu.reservation_override_mode` = 'ALLOW_ANY_OVERRIDE');
+
+-- Or once for the whole organization (projects inherit it unless they set their own value)
+ALTER ORGANIZATION
+SET OPTIONS (`region-eu.reservation_override_mode` = 'ALLOW_ANY_OVERRIDE');
+```
+
+- It must be in effect on the project the **job runs in** (the billing project of the query), not on the project hosting the proxy or the reservation.
+- BigQuery has no folder-level configuration: to cover a folder, set it on each project in the folder or on the organization. A project-level value overrides the organization-level one.
+- Setting it requires `bigquery.config.update` (included in `roles/bigquery.admin`) on the project or organization.
+- A new value can take a few minutes to apply. Check the effective value, including what is inherited from the organization:
+
+  ```sql
+  SELECT * FROM `region-eu`.INFORMATION_SCHEMA.EFFECTIVE_PROJECT_OPTIONS
+  WHERE option_name = 'reservation_override_mode';
+  ```
 
 ## Container Images
 
@@ -375,8 +416,10 @@ In dbt Cloud, you can route BigQuery traffic through the proxy using **Extended 
 3. In the **Extended Attributes** section, add the following YAML:
 
 ```yaml
-api_endpoint: https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app
+api_endpoint: bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app
 ```
+
+   Enter the hostname **without** the `https://` prefix — dbt Cloud adds it automatically.
 
 4. Click **Save**.
 
@@ -388,7 +431,7 @@ All dbt jobs running in that environment will now route their BigQuery API calls
 
 - **Your BigQuery credential still does the authentication.** The proxy only changes *where* the API calls go — it forwards your connection's existing credential (service-account key, OAuth, or WIF) to BigQuery untouched. It does not authenticate on your behalf, and it needs no BigQuery permissions of its own. If your connection's credential is missing or invalid, jobs fail with a normal BigQuery auth error, not a proxy error.
 - **Extended Attributes are set per environment.** Each environment you want routed — every deployment environment *and* the development (IDE) environment — needs its own `api_endpoint`. In dbt Cloud they are stored as a separate object attached to the environment, so be careful editing an environment through the API: an update that omits the extended-attributes reference will detach it and silently send traffic straight to BigQuery again.
-- **Include the full path if the proxy is behind a load balancer.** The example URL is a bare Cloud Run hostname, which is correct for the public access model. If you front the proxy with a load balancer on a path prefix (e.g. `https://api.example.com/bq-reverse-proxy`), set `api_endpoint` to that full URL including the prefix.
+- **Include the full path if the proxy is behind a load balancer.** The example URL is a bare Cloud Run hostname, which is correct for the public access model. If you front the proxy with a load balancer on a path prefix (e.g. `api.example.com/bq-reverse-proxy`), set `api_endpoint` to that host and path including the prefix — still without `https://`.
 
 To confirm traffic is actually flowing through the proxy, run a model and check that the proxy's `/metrics` counters (e.g. `bq_proxy_requests_total`) increase, or look at its logs for the forwarded job submissions.
 
@@ -851,6 +894,7 @@ If you deployed the previous `bq-proxy` package from this repository:
 | `404` / connection refused           | Ingress setting            | `INGRESS_TRAFFIC_INTERNAL_ONLY` blocks traffic from outside your VPC — SaaS clients (Looker, dbt Cloud) need `INGRESS_TRAFFIC_ALL`             |
 | Health check passes but queries fail | BigQuery API not enabled   | Enable `bigquery.googleapis.com` on your project                                                                                          |
 | Queries succeed but no optimization  | Missing or invalid API key | Verify the `default` API key is set correctly and `bq_job_optimizer_url` was not overridden. Check logs: `gcloud run services logs read bq-reverse-proxy --region=REGION` |
+| Jobs fail with `Override to 'none' is not enabled` | `reservation_override_mode` not set | The optimizer routed the job to on-demand, but the job's project does not allow that override. Set `ALLOW_ANY_OVERRIDE` — see [Allowing on-demand reservation overrides](#allowing-on-demand-reservation-overrides) |
 | High latency on first request        | Cold start                 | Increase `min_instances` to 1 or higher                                                                                                   |
 
 

@@ -63,7 +63,7 @@ Narrowing flags on every verb: `--location <us|europe|region>` (default every lo
 
 ## Prerequisites
 
-- The `followrabbit` CLI, 0.3.0 or newer (`followrabbit optimize sq-pricing --help` must work). If it is missing or too old, stop and direct the user to https://subscriptions.agentic.followrabbit.ai. Do not install or upgrade software yourself.
+- The `followrabbit` CLI, 0.3.0 or newer (`followrabbit optimize sq-pricing --help` must work). If it is missing or too old, stop and direct the user to https://github.com/followrabbit-ai/awesome-rabbit#quickstart-cli. Do not install or upgrade software yourself.
 - A **BQ Job Optimizer API key** from [app.followrabbit.ai/api-keys](https://app.followrabbit.ai/api-keys). This is not the main CLI key. The reservations the optimizer may use are configured on this key in the Rabbit app; never ask the user for reservation ids.
 - **Google Application Default Credentials** (`gcloud auth application-default login`) with `bigquery.transfers.get` and `bigquery.transfers.update` on the project. Ask the user to log in themselves.
 

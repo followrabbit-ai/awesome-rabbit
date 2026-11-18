@@ -58,7 +58,7 @@ If the binary is missing, or the second command fails with `unknown command "opt
 
 > The `followrabbit` CLI (0.3.0 or newer) is required for this skill but is not installed, or is too old, on this machine. Please install or upgrade it manually before re-running this skill.
 >
-> - Installation instructions and pricing: https://subscriptions.agentic.followrabbit.ai
+> - Installation instructions: https://github.com/followrabbit-ai/awesome-rabbit#quickstart-cli
 > - Privacy policy: https://followrabbit.ai/en/rabbit-privacy-policy
 > - Terms of service: https://followrabbit.ai/en/rabbit-general-terms-and-conditions
 

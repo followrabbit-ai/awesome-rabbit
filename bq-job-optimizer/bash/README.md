@@ -286,6 +286,6 @@ The Rabbit API returns:
 - Reservation ID format must be compatible with `bq` CLI
 
 ## Support
-For support, contact success@followrabbit.ai
+For support, contact support@followrabbit.ai
 
 

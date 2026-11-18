@@ -11,10 +11,10 @@
       "name": "followrabbit",
       "source": "./",
       "description": "Cloud cost optimization for GCP. Checks BigQuery SQL for cost problems and sets the optimal pricing model on scheduled queries using the followrabbit CLI (requires manual install). Data flow disclosed in README.",
-      "version": "1.5.1",
+      "version": "1.6.0",
       "category": "infrastructure",
       "tags": ["finops", "gcp", "terraform", "cost-optimization", "bigquery", "gke"],
-      "homepage": "https://subscriptions.agentic.followrabbit.ai"
+      "homepage": "https://github.com/followrabbit-ai/awesome-rabbit#get-access"
     }
   ]
 }
