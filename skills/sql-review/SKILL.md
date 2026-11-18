@@ -1,11 +1,13 @@
 ---
 name: sql-review
 description: >
-  Run deterministic BigQuery SQL best-practice checks with `followrabbit sql`.
-  Use when the user wants BigQuery SQL checked for cost antipatterns before
-  commit, or is editing BigQuery SQL / dbt models and mentions cost, scans,
-  partitions, or slots. No LLM involved — fast and does not consume LLM quota.
-version: 1.1.0
+  Check BigQuery SQL and dbt models for cost best practices with
+  `followrabbit sql`, judge each finding against the actual query, and report
+  only what matters. Use when the user wants BigQuery SQL or dbt models checked
+  for cost antipatterns before commit, or is editing BigQuery SQL or dbt models
+  and mentions cost, scans, partitions, or slots. The checks are deterministic:
+  no LLM call on the Rabbit side and no LLM quota used.
+version: 1.2.0
 tools: Bash, Read
 user-invocable: true
 ---
@@ -14,88 +16,152 @@ user-invocable: true
 
 ## Overview
 
-Thin wrapper around `followrabbit sql`, the on-demand deterministic BigQuery
-SQL rule check. The CLI sends the files, directories, stdin or inline query you
-give it to the Rabbit API, which runs rule checks in memory — no LLM call, no
-stored SQL. A directory is walked for `.sql`, `.sqlx` and `.py` files and all of
-them are uploaded (see Data sent below). It is fast and free of LLM quota, so it
-can run on every iteration.
+`followrabbit sql` sends SQL to the Rabbit API, which runs deterministic
+BigQuery best-practice checks in memory and returns findings. Your job: give it
+the right input, judge each finding against the query it flags, present what
+matters, and send a verdict back for each finding you decided.
 
-Requires `followrabbit` CLI **0.2.0 or newer**; **0.6.0 or newer** for directory
-runs that include Python files (0.5.0 caps a run at 500 files and about 5 MB).
-If `followrabbit sql --help`
-fails with an unknown-command error, tell the user to upgrade
-(`brew upgrade followrabbit-ai/tap/followrabbit`) and stop.
-The CLI must be authenticated (`followrabbit auth status`); any valid API key
-works. From 0.6.0 a user whose organisation is set up for Google sign-in with
-Rabbit needs no key: `gcloud auth application-default login` is enough, and the
-CLI then also sends a Google ID token (email and Workspace domain) with each
-request. Do not install software or run a login on the user's behalf.
-
-## When to Use
-
-- "Check this SQL for cost antipatterns" / "does this query follow best practices?"
-- Before committing changes to BigQuery `.sql` files or compiled dbt models
-- The user mentions BigQuery scan cost, partitions, clustering, or slots
-  while editing SQL
+Requires CLI **0.2.0+**; **0.6.0+** for directory runs that include Python
+files; **0.7.0+** for finding ids and `sql feedback`. If
+`followrabbit sql --help` fails with an unknown-command error, tell the user to
+upgrade (`brew upgrade followrabbit-ai/tap/followrabbit`) and stop. The CLI must
+be authenticated (`followrabbit auth status`): an API key, or from 0.6.0 Google
+sign-in via `gcloud auth application-default login` where the organisation is
+set up for it. Do not install software or run a login on the user's behalf.
 
 ## Data sent to the Rabbit API
 
 `followrabbit sql` sends the full contents and the path of every file you name,
-plus stdin and inline `-q` text, to the Rabbit API. Given a directory, it also
-sends every `.sql`, `.sqlx` and `.py` file the walk finds, so the contents of
-every Python file under that directory are uploaded unless `--no-python` is
-passed. The walk skips hidden directories and `node_modules`, `target`,
-`dbt_packages`, `dbt_modules`, `venv`, `site-packages`, `__pycache__`, `build`
-and `dist` (a directory named explicitly is always read); `.gitignore` is not
-honoured. The server decides which files hold SQL and parses Python files
-(without executing them) to read SQL out of Airflow operator calls; files with
-no SQL come back skipped. Tell the user this before running on a directory with
-Python files they may not want uploaded.
+plus stdin and inline `-q` text. Given a directory, it also sends every `.sql`,
+`.sqlx` and `.py` file the walk finds, so every Python file under that directory
+is uploaded unless `--no-python` is passed. The walk skips hidden directories and
+`node_modules`, `target`, `dbt_packages`, `dbt_modules`, `venv`,
+`site-packages`, `__pycache__`, `build` and `dist` (a directory named explicitly
+is always read); `.gitignore` is not honoured. Python files are parsed, not
+executed, to read SQL out of Airflow operator calls. Tell the user this before
+running on a directory with Python files they may not want uploaded.
 
-The SQL is analysed in memory and the SQL text is not retained. Finding
-metadata and a hashed form of the file path are kept to measure which
-recommendations are useful. No credentials, git history, or telemetry beyond
-that is sent.
+The SQL text is analysed in memory and not kept. Rabbit keeps finding metadata,
+a hashed file path, and the verdicts sent with `sql feedback`, to measure which
+recommendations are useful. For each request it also records the signed-in
+email (or the API key owner's email), the key id, the CLI version, the command
+and its outcome; the email is kept for up to 13 months. Nothing else from the
+repository is sent.
 
-## Running checks
+## 1. Choose the input
+
+**dbt models.** This flow is written for dbt Core. It applies when a
+`dbt_project.yml` sits at or above the SQL in scope. The project name is its
+`name:` value; compiled SQL is under `target/compiled/<name>/` with the same
+relative path as the model (`models/marts/orders.sql` becomes
+`target/compiled/<name>/models/marts/orders.sql`). `target` is the default:
+`--target-path`, the `DBT_TARGET_PATH` environment variable, or the
+deprecated `target-path:` key in `dbt_project.yml` put it elsewhere.
+
+1. If the compiled files for the models in scope exist and are newer than those
+   model files (compare with `ls -l`), check the compiled files. Name them or
+   their directory explicitly: a walk from the project root skips `target/`.
+2. If they are missing or older, offer to run `dbt compile` with a selection
+   limited to the models in scope (`dbt compile --select orders customers`, run
+   from the directory holding `dbt_project.yml`). Say in one line that a
+   compile uses their own dbt profile and warehouse credentials and may run
+   small lookup queries. Wait for a yes. Never compile unasked. Never install
+   dbt or run a login.
+3. If the user declines, `dbt --version` fails, or the compile fails, say which
+   models were not checked. (Raw models can still be passed: Jinja that is only
+   `ref()` / `source()` is checked with less information, a Jinja block standing
+   for a whole clause is skipped.) Describe the CI path: a step after the
+   pipeline's own `dbt compile` running
+   `followrabbit sql target/compiled/<name>/ --fail-on high`, authenticated
+   with an API key (for CI access write to support@followrabbit.ai).
+4. Report each finding against the model source file, not the compiled path.
+   Compiled line numbers differ: read the model and give the line of the flagged
+   statement there.
+
+**Other templated SQL.** `${...}` or `{{ ... }}` placeholders that stand for a
+name or a value are checked as written. Ones that stand for a whole clause make
+the file skip as `unresolved_templating`. The remedy is to check the rendered
+SQL, what the pipeline actually submits (pipe it in on stdin with
+`--stdin-filename <original path>`), not `dbt compile`. If the rendered SQL is
+not available, report the file as not checked.
+
+## 2. Run the check
 
 ```bash
 followrabbit sql query.sql                 # one file
 followrabbit sql models/ transforms/       # directories (walked for *.sql, *.sqlx, *.py)
 followrabbit sql dags/ --no-python         # directory, without uploading Python files
-cat q.sql | followrabbit sql               # stdin
+cat q.sql | followrabbit sql --stdin-filename q.sql   # stdin
 followrabbit sql -q "SELECT * FROM \`p.d.t\`"   # inline SQL
 ```
 
-Use `--json` when capturing output for parsing (auto-enabled when piped).
-`--all` prints every finding when the default listing is capped.
+Use `--json` (automatic when output is piped). Under `data`, `findings` holds
+each finding (`id`, `file`, `start_line`, `end_line`, `level` high / medium /
+low, `message`, optional `fix`, `measure_first`) and `summary` holds `findings`,
+`checked`, `skipped` and `skipped_by_reason`. Add `--files` for the per-file
+list, for example to name the skipped files, and `--all` when the listing says
+it is capped. Older CLIs always include the per-file list (`files`, each with a
+`status` and a skip `reason`), have no `skipped_by_reason`, and their findings
+carry no `id`: count the skip reasons from `files`; everything below works
+except feedback.
 
-Notes that prevent wrong conclusions:
+Walked files pass a BigQuery dialect gate; named files, `-q` and stdin do not.
+Skip reasons: `no_sql` (ordinary Python modules, and walked `.sqlx` files),
+`not_bigquery`, `unresolved_templating`, `parse_error`, `too_large` (over
+128 KB), `empty`. Over 5000 files nothing is sent (`TOO_MANY_FILES`): run per
+subfolder or pass `--no-python`.
 
-- **Directory walks apply a BigQuery dialect gate**: files not recognised as
-  BigQuery are reported as skipped (`not_bigquery`), not analysed. Inline
-  `-q` and stdin input is always treated as BigQuery.
-- **Raw dbt / Jinja models are skipped** (`unresolved_templating`). Run
-  `dbt compile` and point the skill at `target/compiled/` instead.
-- **Skip reasons**: `no_sql` (no SQL the server can read, which is what an
-  ordinary Python module gets; walked `.sqlx` files also currently come back
-  this way), `not_bigquery`, `unresolved_templating`, `parse_error`,
-  `too_large` (over 128 KB), `empty`.
-- **Size limit**: up to 5000 files per run (0.6.0 sends large runs in several
-  requests). Over that, nothing is sent and the error `TOO_MANY_FILES` says to
-  run per subfolder or pass `--no-python`.
+## 3. Judge each finding
 
-## Presenting results
+Read each flagged statement in full before deciding. Keep a finding only when
+it matters for this query; the pattern being present is not enough. Typical
+reasons to set one aside: the full scan is the purpose (a history backfill, a
+reconciliation, a min or max over all time); the table is known to be small;
+exact results are required where an approximation was suggested; the ordering
+is the purpose of the query.
 
-- Group findings by file. For each: severity level (high / medium / low), the
-  message, and the suggested fix when present.
-- A finding marked `measure_first` should be presented as "measure before
-  applying" — do not auto-apply it.
-- **Always report the checked and skipped counts and the skip reasons.** Zero
-  findings with skipped files is not a clean bill of health — say what was
-  skipped and why (most often templating; suggest the dbt compile path).
-- Offer to apply straightforward fixes to the SQL; let the user decide.
+Do not invent facts about table sizes. When you cannot tell, keep the finding,
+mark it undecided, and say what would settle it (for example the table's
+size).
+
+## 4. Present
+
+- Kept findings grouped by file. For each: level, what it costs in this query,
+  and the concrete change. A finding with `measure_first` is presented as
+  "measure before applying"; never apply it without that step.
+- One line for what you set aside, with the count and the reasons, so the user
+  can ask to see them.
+- Always the checked and skipped counts, with the skip reasons. Zero findings
+  with skipped files is not a clean bill of health.
+- When nothing relevant remains, say so plainly in one or two sentences, with
+  what was checked and what was skipped.
+- Offer to apply straightforward fixes; let the user decide.
+- If step 5 will send feedback and you have not said so yet in this session,
+  end with one line: a verdict per finding is sent to Rabbit, and
+  `FOLLOWRABBIT_NO_FEEDBACK=1` turns this off. This comes before the first
+  send.
+
+## 5. Send feedback
+
+After presenting, send one verdict for each finding you decided, all in one
+call. Do not ask the user each time. Verdicts: `useful` for a finding kept
+because it matters here, `wrong` for one set aside because it does not hold
+here, `intentional` for one set aside because the pattern is deliberate. A
+finding kept only because you could not tell gets no verdict. Each verdict
+gets a one-line reason (at most 300 characters)
+about why the finding did or did not apply. No SQL text, no names of people, no
+secrets.
+
+```bash
+followrabbit sql feedback <<'EOF'
+[{"id": "<id>", "verdict": "intentional", "reason": "full scan is the point: reconciliation over all history"}]
+EOF
+```
+
+Skip this step when `FOLLOWRABBIT_NO_FEEDBACK=1` is set, when findings carry
+no `id`, or when `followrabbit sql feedback --help` fails or shows only the
+general `sql` help; the notice in step 4 is then left out too. If the send
+fails, say so in one line; the review still stands.
 
 ## CI usage
 
