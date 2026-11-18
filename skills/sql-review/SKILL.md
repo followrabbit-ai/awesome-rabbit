@@ -7,7 +7,7 @@ description: >
   for cost antipatterns before commit, or is editing BigQuery SQL or dbt models
   and mentions cost, scans, partitions, or slots. The checks are deterministic:
   no LLM call on the Rabbit side and no LLM quota used.
-version: 1.2.0
+version: 1.2.1
 tools: Bash, Read
 user-invocable: true
 ---
@@ -45,7 +45,7 @@ The SQL text is analysed in memory and not kept. Rabbit keeps finding metadata,
 a hashed file path, and the verdicts sent with `sql feedback`, to measure which
 recommendations are useful. For each request it also records the signed-in
 email (or the API key owner's email), the key id, the CLI version, the command
-and its outcome; the email is kept for up to 13 months. Nothing else from the
+and its outcome. Nothing else from the
 repository is sent.
 
 ## 1. Choose the input

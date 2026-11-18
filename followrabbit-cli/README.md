@@ -73,7 +73,7 @@ followrabbit auth login --optimizer-key <YOUR_OPTIMIZER_KEY>
 
 ## What Rabbit records per request
 
-For every request to the FollowRabbit API, Rabbit records the signed-in email (the Google account email), the CLI version, the command and its outcome. The email is kept for up to 13 months. `optimize` talks to the BQ Job Optimizer instead and is not covered here.
+For every request to the FollowRabbit API, Rabbit records the signed-in email (the Google account email), the CLI version, the command and its outcome. `optimize` talks to the BQ Job Optimizer instead and is not covered here.
 
 ## Global flags
 
