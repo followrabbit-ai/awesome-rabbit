@@ -346,7 +346,8 @@ How each supported client points at the proxy, and which options it has for supp
 | Node.js (`@google-cloud/bigquery`) | `apiEndpoint` constructor option | ❌ | ✅ |
 | Go (`cloud.google.com/go/bigquery`) | `option.WithEndpoint(.../bigquery/v2/)` | ✅ custom `http.Client` | ✅ |
 | C# / .NET (`Google.Cloud.BigQuery.V2`) | `BigQueryClientBuilder.BaseUri` | ❌ | ✅ |
-| dbt Core | `BIGQUERY_EMULATOR_HOST` env var | ❌ | ✅ |
+| dbt Core v1 (Python, `dbt-bigquery`) | `BIGQUERY_EMULATOR_HOST` env var | ❌ | ✅ |
+| dbt Core v2 / dbt Fusion engine | `api_endpoint` in `profiles.yml` — see [dbt Core v2 and the dbt Fusion engine](#dbt-core-v2-and-the-dbt-fusion-engine) | ❌ | ❌ bare host only |
 | dbt Cloud | Extended Attributes `api_endpoint` | ❌ | ✅ |
 | Airflow / Cloud Composer / Astronomer | `BIGQUERY_EMULATOR_HOST` env var | ❌ | ✅ |
 | Dagster / Mage / Prefect | `BIGQUERY_EMULATOR_HOST` env var | ❌ | ✅ |
@@ -356,7 +357,7 @@ How each supported client points at the proxy, and which options it has for supp
 | `bq` CLI | `--api` flag | ❌ | ✅ |
 | JDBC (Simba driver) | `PrivateServiceConnectUris=BIGQUERY=…` — see [JDBC](#jdbc-simba-driver) | ❌ | ✅ |
 
-Only custom code using the Java or Go SDK can send the header; every standard tool relies on a path alias for a dedicated key, or on the `default` key.
+Only custom code using the Java or Go SDK can send the header; every standard tool relies on a path alias for a dedicated key, or on the `default` key. dbt Core v2 and the dbt Fusion engine accept neither, so they always use the `default` key of the deployment they point at.
 
 ## Connecting Your Clients to the Proxy
 
@@ -396,9 +397,11 @@ export BIGQUERY_EMULATOR_HOST=https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app
 
 With this set, any `bigquery.Client()` created in the same shell session will automatically route through the proxy — no code changes required.
 
-### dbt Core
+### dbt Core v1
 
-dbt Core uses the `google-cloud-bigquery` Python library under the hood. Set the `BIGQUERY_EMULATOR_HOST` environment variable before running dbt:
+This section applies to Python-based dbt Core 1.x with `dbt-bigquery`. For dbt Core v2 and the dbt Fusion engine, see the [next section](#dbt-core-v2-and-the-dbt-fusion-engine) — they ignore `BIGQUERY_EMULATOR_HOST`.
+
+dbt Core v1 uses the `google-cloud-bigquery` Python library under the hood. Set the `BIGQUERY_EMULATOR_HOST` environment variable before running dbt:
 
 ```bash
 export BIGQUERY_EMULATOR_HOST=https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app
@@ -406,6 +409,38 @@ dbt run
 ```
 
 This applies to all dbt commands (`dbt run`, `dbt test`, `dbt build`, etc.) in the same shell session. No changes to `profiles.yml` are needed.
+
+### dbt Core v2 and the dbt Fusion engine
+
+dbt Core v2 and the dbt Fusion engine are supported through the proxy. They are a Rust binary with built-in adapters and cannot load the `dbt-rabbit-bigquery` adapter (`type: rabbitbigquery` is rejected as an unknown adapter type), so the proxy is the way to optimize their BigQuery jobs.
+
+Set `api_endpoint` on the BigQuery target in `profiles.yml`:
+
+```yaml
+my_project:
+  target: prod
+  outputs:
+    prod:
+      type: bigquery
+      method: oauth
+      project: my-gcp-project
+      dataset: my_dataset
+      location: EU
+      api_endpoint: https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app/
+```
+
+Then run dbt as usual. Every job dbt submits (`jobs.insert`) goes through the proxy and is optimized; nothing else in the project changes.
+
+**A few things that are easy to miss:**
+
+- **Use dbt 2.0.0-preview.165 or newer.** Older Fusion builds ignore `api_endpoint` without any warning and send jobs straight to BigQuery. Check with `dbt --version`.
+- **`api_endpoint` must be a bare host:** scheme, hostname, optional port, trailing slash. dbt rejects anything with a path (`'api_endpoint' must be a bare host`), so a [path alias](#using-multiple-api-keys-with-one-deployment) such as `https://<proxy-url>/dbt` cannot be used, and neither can a load balancer path prefix. dbt therefore always uses the deployment's `default` key. To give dbt a dedicated key, run a separate proxy deployment whose `default` key is the dbt key.
+- **`BIGQUERY_EMULATOR_HOST` has no effect.** That variable is read by the Python client library, which dbt Core v2 and Fusion do not use.
+- **Query results do not pass through the proxy.** dbt reads results over the BigQuery Storage Read API, which stays on its Google default endpoint. This is expected — see [Limitations](#limitations).
+
+To confirm traffic is flowing through the proxy, run `dbt run` and check that the proxy's `/metrics` counters (e.g. `bq_proxy_requests_total`) increase, or look at its logs for the forwarded job submissions.
+
+Verified with dbt 2.0.12: `dbt run` with table and view models, with all job submissions rewritten by the proxy.
 
 ### dbt Cloud
 
