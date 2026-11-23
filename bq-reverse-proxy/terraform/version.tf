@@ -5,5 +5,5 @@
 # the `version` label and output for provenance.
 
 locals {
-  version = "v0.1.0"
+  version = "v0.3.0"
 }
