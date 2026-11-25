@@ -32,9 +32,9 @@ variable "image_registry" {
   type        = string
   description = <<EOT
 Artifact Registry path up to but not including the :tag. Defaults to the
-central Rabbit-hosted registry. allAuthenticatedUsers has reader there, so
-any GCP identity (Cloud Run runtime SA, customer deploys, etc.) can pull
-without cross-project IAM.
+central Rabbit-hosted registry. The registry is public: allUsers has reader
+there, so anyone (Cloud Run runtime SA, customer deploys, update bots) can
+list tags and pull without Google credentials or cross-project IAM.
 
 Regional mirrors of the same image:
   us-docker.pkg.dev/followrabbit-ai-public/images/bq-reverse-proxy
