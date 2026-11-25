@@ -118,7 +118,7 @@ The proxy image is published to Rabbit's central Artifact Registry and replicate
 | **Asia-Pacific** | `asia-docker.pkg.dev/followrabbit-ai-public/images/bq-reverse-proxy`   |
 
 
-These are the same image — only the registry location differs. Any authenticated GCP identity can pull these images (the repositories grant `roles/artifactregistry.reader` to `allAuthenticatedUsers`), so the Cloud Run service agent in your project can pull them with no extra IAM setup. Images are versioned with semver tags (e.g. `v0.1.0`) plus a `latest` tag pointing at the newest release. The Terraform in this package deploys `latest` by default; set the `image_tag` variable to a release tag to pin the version (recommended if you want explicit control over upgrades).
+These are the same image — only the registry location differs. The registry is public: anyone can list the tags and pull these images without Google credentials (the repositories grant `roles/artifactregistry.reader` to `allUsers`). The Cloud Run service agent in your project pulls them with no extra IAM setup, and an update bot such as Renovate can watch for new tags without a Google login. Images are versioned with semver tags (e.g. `v0.1.0`) plus a `latest` tag pointing at the newest release. The [release notes](CHANGELOG.md) list what changed in each tag, with its image digest. The Terraform in this package deploys `latest` by default; set the `image_tag` variable to a release tag to pin the version (recommended if you want explicit control over upgrades).
 
 ## Deployment with Terraform
 
@@ -889,6 +889,8 @@ image_tag = "v0.1.0"
 ```
 
 Running deployments are never changed automatically either way — Cloud Run resolves the image when a revision is created, so a new release only reaches you when you apply.
+
+Before you bump the tag, read the [release notes](CHANGELOG.md): they list what changed in each release and the digest of its image.
 
 ## Removing the Proxy
 
