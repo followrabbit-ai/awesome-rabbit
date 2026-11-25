@@ -41,7 +41,7 @@ echo 'source /path/to/rabbit_bq.sh' >> ~/.bashrc
 |----------|----------|-------------|---------|
 | `RABBIT_API_KEY` | Yes | Your Rabbit API key | - |
 | `RABBIT_API_URL` | No | Rabbit API endpoint URL | `https://api.followrabbit.ai/bq-job-optimizer/v1/optimize-job` |
-| `BQ_OPTIMIZER_DEFAULT_PRICING_MODE` | Yes | Default pricing mode: `"on_demand"` or `"slot_based"` | - |
+| `BQ_OPTIMIZER_DEFAULT_PRICING_MODE` | Yes | How your queries are billed today: `"slot_based"` (project assigned to a reservation) or `"on_demand"` (no assignment). See [Optimization Configuration](#optimization-configuration). | - |
 | `BQ_OPTIMIZER_RESERVATION_IDS` | Yes | Comma-separated list of reservation IDs in format `project_id:region.reservation_name` | - |
 
 **Command Line Flags:**
@@ -205,8 +205,15 @@ The optimizer requires configuration of default pricing mode and reservation IDs
 - Add tracking labels
 
 **Default Pricing Mode:**
-- `"on_demand"`: Prefers on-demand, switches to reservation only if cheaper
-- `"slot_based"`: Prefers reservation, switches to on-demand only if cheaper
+
+Set it to how your queries are billed **today**, without the optimizer. It is not a preference or a goal:
+
+- `"slot_based"`: your project is assigned to a reservation. Queries stay on that reservation and are moved to on-demand (`reservation: none`) only when that is cheaper. List the reservation your project is assigned to in `BQ_OPTIMIZER_RESERVATION_IDS`.
+- `"on_demand"`: your project has no reservation assignment. Queries stay on-demand and are assigned to the reservation in `BQ_OPTIMIZER_RESERVATION_IDS` only when that is cheaper.
+
+A common mistake is choosing `"on_demand"` because you want queries moved *to* on-demand. If your project already runs on a reservation, that makes the optimizer pin queries onto the listed reservation and never move anything to on-demand. Use `"slot_based"`.
+
+**BigQuery prerequisite for `"slot_based"`:** moving a query to on-demand is a per-job reservation override, which BigQuery rejects (`Override to 'none' is not enabled`) unless the project's regional `reservation_override_mode` is `ALLOW_ANY_OVERRIDE`. See [Allowing on-demand reservation overrides](../../bq-reverse-proxy/README.md#allowing-on-demand-reservation-overrides) for the `ALTER PROJECT` / `ALTER ORGANIZATION` statements.
 
 **Reservation IDs:**
 Provide a comma-separated list of reservation IDs in the format:
