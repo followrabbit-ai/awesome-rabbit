@@ -189,7 +189,7 @@ curl https://bq-reverse-proxy-xxxxxxxxxx-ey.a.run.app/readyz
 # Expected: {"ready":true,...}
 ```
 
-> Use `/readyz` for external health checks. (`/healthz` also exists but is used by Cloud Run's liveness probe and may be intercepted by the platform.) The proxy also exposes Prometheus metrics on `/metrics`.
+> Use `/readyz` for external health checks. (`/healthz` also exists but is used by Cloud Run's liveness probe and may be intercepted by the platform.) To see what the proxy is doing, see [Monitoring](#monitoring).
 
 ## Storing the API Keys in Secret Manager
 
@@ -438,7 +438,7 @@ Then run dbt as usual. Every job dbt submits (`jobs.insert`) goes through the pr
 - **`BIGQUERY_EMULATOR_HOST` has no effect.** That variable is read by the Python client library, which dbt Core v2 and Fusion do not use.
 - **Query results do not pass through the proxy.** dbt reads results over the BigQuery Storage Read API, which stays on its Google default endpoint. This is expected — see [Limitations](#limitations).
 
-To confirm traffic is flowing through the proxy, run `dbt run` and check that the proxy's `/metrics` counters (e.g. `bq_proxy_requests_total`) increase, or look at its logs for the forwarded job submissions.
+To confirm traffic is flowing through the proxy, run `dbt run` and look at the proxy's logs for the forwarded job submissions (see [Monitoring](#monitoring)).
 
 Verified with dbt 2.0.12: `dbt run` with table and view models, with all job submissions rewritten by the proxy.
 
@@ -468,7 +468,7 @@ All dbt jobs running in that environment will now route their BigQuery API calls
 - **Extended Attributes are set per environment.** Each environment you want routed — every deployment environment *and* the development (IDE) environment — needs its own `api_endpoint`. In dbt Cloud they are stored as a separate object attached to the environment, so be careful editing an environment through the API: an update that omits the extended-attributes reference will detach it and silently send traffic straight to BigQuery again.
 - **Include the full path if the proxy is behind a load balancer.** The example URL is a bare Cloud Run hostname, which is correct for the public access model. If you front the proxy with a load balancer on a path prefix (e.g. `api.example.com/bq-reverse-proxy`), set `api_endpoint` to that host and path including the prefix — still without `https://`.
 
-To confirm traffic is actually flowing through the proxy, run a model and check that the proxy's `/metrics` counters (e.g. `bq_proxy_requests_total`) increase, or look at its logs for the forwarded job submissions.
+To confirm traffic is actually flowing through the proxy, run a model and look at the proxy's logs for the forwarded job submissions (see [Monitoring](#monitoring)).
 
 ### Apache Airflow
 
@@ -761,6 +761,73 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 - GCP-managed Dataform
 - BigQuery console UI
 
+## Monitoring
+
+There are three ways to see what the proxy is doing. On Cloud Run, use the first two.
+
+| What you want to know | Where to look | Setup |
+|---|---|---|
+| Traffic, errors, latency, instance count | Cloud Run's built-in metrics | None |
+| What the optimizer did with each job, per project | Log-based metrics in Cloud Monitoring | `create_log_metrics = true` |
+| The same counters in Prometheus | The proxy's `/metrics` endpoint | `METRICS_PORT` (off by default) |
+
+### Cloud Run metrics
+
+Cloud Run records request count, latency and instance count for the service with no setup and at no charge. Open the service in the Cloud Run console and choose **Metrics**, or chart `run.googleapis.com/request_count` and `run.googleapis.com/request_latencies` in Cloud Monitoring. These metrics do not know what the optimizer did with a job.
+
+### Log-based metrics
+
+From image `v0.4.0`, the proxy writes JSON log lines with an `event` field as it handles job submissions:
+
+| `event` | Fields | Meaning |
+|---|---|---|
+| `optimize` | `project`, `outcome` | A job submission that did not fail open, and what happened to it. `outcome` is `optimized`, `not_query` (a load, copy or extract job), `disabled` (the request had no API key) or `auth_error` (the optimizer rejected the API key; the job ran unoptimized) |
+| `fail_open` | `reason` | The proxy forwarded the job unoptimized because something failed: `optimizer_error`, `optimizer_auth`, `unexpected_body_change`, `body_too_large`, `body_read_error` or `body_not_json` |
+| `reroute` | `outcome` | The optimizer placed the job in an on-demand pool project: `routed`, or the reason the job stayed in its own project (`disabled` when `enable_pool_reroute` is off) |
+
+A job submission that fails open is logged as `fail_open` only (a rejected API key is logged as both). Total job submissions are therefore `optimize` plus `fail_open`, minus `optimize` with `outcome="auth_error"`.
+
+
+Set `create_log_metrics = true` and the module creates three counters in Cloud Monitoring from these lines:
+
+| Metric type | Labels |
+|---|---|
+| `logging.googleapis.com/user/<service_name>/optimize_total` | `project`, `outcome` |
+| `logging.googleapis.com/user/<service_name>/fail_open_total` | `reason` |
+| `logging.googleapis.com/user/<service_name>/reroute_total` | `outcome` |
+
+They count across all instances, and access to them is controlled by IAM on your project like any other Cloud Monitoring data. The `log_metric_types` output lists the three types for use in dashboards and alert policies. A rising `fail_open_total` is the one worth an alert: jobs still run, but unoptimized.
+
+Things to know:
+
+- Whoever runs Terraform needs `roles/logging.configWriter` on the project.
+- The events are logged at `info`. With `log_level` set to `warn` or `error` the metrics stay empty.
+- A log-based metric counts only log lines written after it was created.
+- User-defined log-based metrics are billed as Cloud Monitoring custom metrics.
+
+To look at the events without creating metrics:
+
+```bash
+gcloud logging read 'resource.type="cloud_run_revision" AND resource.labels.service_name="bq-reverse-proxy" AND jsonPayload.event="optimize"' \
+  --project YOUR_PROJECT --limit 20 --format 'table(timestamp, jsonPayload.project, jsonPayload.outcome)'
+```
+
+### Prometheus endpoint
+
+The proxy can serve the same counters in Prometheus format on `/metrics`. From image `v0.4.0` this is **off by default**, and the `METRICS_PORT` environment variable turns it on:
+
+| `METRICS_PORT` | `/metrics` is served | Use it for |
+|---|---|---|
+| unset (default) | Nowhere. The proxy URL answers `404` | Cloud Run |
+| A port of its own, e.g. `9090` | Only on that port | Kubernetes, or a collector sidecar that scrapes `localhost` |
+| `8080` (the proxy's own port) | On the proxy URL | Deployments whose URL is not public |
+
+Images before `v0.4.0` always serve `/metrics` on the proxy URL. With `allow_unauthenticated = true`, anyone who knows the URL can read it, and the counters carry your project IDs and job counts per project. Upgrading to `v0.4.0` closes this with no other change.
+
+To set the variable through the module, use `extra_env = { METRICS_PORT = "8080" }`. Do this only when the proxy URL is not open to the internet. Even then, an endpoint on the URL of a Cloud Run service is of limited use: each request reaches one instance, and an instance's counters are gone when it scales down. Use log-based metrics instead.
+
+If you want these Prometheus metrics in Cloud Monitoring, Google's [Managed Service for Prometheus sidecar](https://cloud.google.com/run/docs/monitoring-managed-prometheus-sidecar) can scrape `METRICS_PORT` inside each instance. The module does not add that sidecar: you need your own service definition for it.
+
 ## Configuration Reference
 
 ### Terraform Variables
@@ -802,6 +869,7 @@ These tools offer no BigQuery API endpoint override, so they cannot use the prox
 | `vpc_subnetwork` | No | `null` | Direct VPC egress subnetwork, `projects/<host>/regions/<region>/subnetworks/<name>`. Region must match the service. Required with `vpc_network` |
 | `vpc_egress` | No | `PRIVATE_RANGES_ONLY` | VPC egress mode. Use `ALL_TRAFFIC` to route googleapis calls through the VPC |
 | `labels` | No | `{}` | Labels for created resources |
+| `create_log_metrics` | No | `false` | Create Cloud Logging log-based metrics for the optimizer outcomes (see [Monitoring](#monitoring)). Needs proxy image >= `v0.4.0` and `roles/logging.configWriter` for whoever runs Terraform |
 | `extra_env` | No | `{}` | Extra container environment variables |
 
 Note that pricing mode and reservation configuration are no longer proxy settings — Rabbit manages optimization behavior server-side, keyed by your API key. Contact your Rabbit representative to change them.
@@ -822,6 +890,7 @@ These are the environment variables the proxy container reads. The Terraform con
 | `MAX_BODY_BYTES` | `1048576` | `max_body_bytes` | Max buffered body size |
 | `LOG_LEVEL` | `info` | `log_level` | Log verbosity |
 | `ENABLE_POOL_REROUTE` | _(unset = off)_ | `enable_pool_reroute` | On-demand pool rerouting. Pool projects are read from the optimizer, not configured here |
+| `METRICS_PORT` | _(unset = not served)_ | `extra_env` | Port the Prometheus `/metrics` endpoint is served on (see [Monitoring](#monitoring)). Needs image >= `v0.4.0`; older images always serve it on `PORT` |
 
 ### Pool rerouting needs a key of its own
 

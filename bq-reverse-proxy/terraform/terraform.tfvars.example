@@ -106,3 +106,8 @@ image_registry = "europe-docker.pkg.dev/followrabbit-ai-public/images/bq-reverse
 # cpu           = "1"
 # memory        = "512Mi"
 # log_level     = "info"
+
+# Count the proxy's optimizer outcomes in Cloud Monitoring (log-based
+# metrics). Needs image >= v0.4.0 and roles/logging.configWriter for
+# whoever runs Terraform. See "Monitoring" in the README.
+# create_log_metrics = true

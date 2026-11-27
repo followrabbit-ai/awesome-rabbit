@@ -127,6 +127,68 @@ resource "google_secret_manager_secret_iam_member" "api_keys_accessor" {
 }
 
 # -----------------------------------------------------------------------
+# Log-based metrics (optional)
+#
+# The proxy writes one INFO log line per counter increment, with an `event`
+# field and the counter's labels as fields. Counting those lines in Cloud
+# Logging gives service-wide numbers on Cloud Run, where a Prometheus
+# endpoint cannot be scraped per instance.
+# -----------------------------------------------------------------------
+
+locals {
+  # event => metric name suffix, label fields, description.
+  log_metrics = {
+    optimize = {
+      name        = "optimize_total"
+      labels      = ["project", "outcome"]
+      description = "BigQuery job submissions that did not fail open, by job project and optimizer outcome (optimized, not_query, disabled, auth_error). Failed-open submissions are counted in fail_open_total."
+    }
+    fail_open = {
+      name        = "fail_open_total"
+      labels      = ["reason"]
+      description = "Job submissions the proxy forwarded unoptimized because something failed, by reason."
+    }
+    reroute = {
+      name        = "reroute_total"
+      labels      = ["outcome"]
+      description = "On-demand pool placements returned by the optimizer, by what the proxy did with them (routed, or the reason the job stayed in its own project; disabled when rerouting is off)."
+    }
+  }
+}
+
+resource "google_logging_metric" "proxy" {
+  for_each = var.create_log_metrics ? local.log_metrics : {}
+
+  project     = var.project_id
+  name        = "${var.service_name}/${each.value.name}"
+  description = each.value.description
+
+  # One line: the API stores the filter as given, and a heredoc's trailing
+  # newline would show up as a diff on every plan.
+  filter = join(" AND ", [
+    "resource.type=\"cloud_run_revision\"",
+    "resource.labels.service_name=\"${var.service_name}\"",
+    "jsonPayload.event=\"${each.key}\"",
+  ])
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+
+    dynamic "labels" {
+      for_each = each.value.labels
+      content {
+        key        = labels.value
+        value_type = "STRING"
+      }
+    }
+  }
+
+  label_extractors = { for label in each.value.labels : label => "EXTRACT(jsonPayload.${label})" }
+}
+
+# -----------------------------------------------------------------------
 # Cloud Run v2 service
 # -----------------------------------------------------------------------
 
