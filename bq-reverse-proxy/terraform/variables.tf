@@ -484,6 +484,32 @@ variable "enable_pool_reroute" {
   default     = false
 }
 
+variable "create_log_metrics" {
+  type        = bool
+  description = <<-EOT
+    Create Cloud Logging log-based metrics from the proxy's log events, so the
+    optimizer outcomes can be charted and alerted on in Cloud Monitoring
+    without scraping the proxy. Three counters are created, named after the
+    service:
+
+      <service_name>/optimize_total   labels: project, outcome
+      <service_name>/fail_open_total  labels: reason
+      <service_name>/reroute_total    labels: outcome
+
+    They count across all instances and carry the same numbers as the proxy's
+    Prometheus counters of the same name (bq_proxy_optimize_total, ...).
+
+    Off by default: whoever runs Terraform needs permission to create
+    log-based metrics (roles/logging.configWriter), and user-defined
+    log-based metrics are billed as Cloud Monitoring custom metrics.
+
+    The events are logged at INFO, so log_level must be "info" or "debug".
+    Needs proxy image >= v0.4.0; older images do not log the events and the
+    metrics stay empty.
+  EOT
+  default     = false
+}
+
 variable "extra_env" {
   type        = map(string)
   description = "Extra environment variables to set on the Cloud Run container (e.g. custom OTEL config)."

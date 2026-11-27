@@ -23,6 +23,11 @@ output "api_keys_secret_id" {
   value       = var.create_api_keys_secret ? google_secret_manager_secret.api_keys[0].secret_id : null
 }
 
+output "log_metric_types" {
+  description = "Cloud Monitoring metric types of the log-based metrics, keyed by log event (empty unless create_log_metrics = true). Use them in dashboards and alert policies."
+  value       = { for event, metric in google_logging_metric.proxy : event => "logging.googleapis.com/user/${metric.name}" }
+}
+
 output "version" {
   description = "Version string baked into this module copy (useful for asserting the right pin was consumed)."
   value       = local.version
