@@ -13,6 +13,34 @@ The registry is public: listing tags and pulling need no Google credentials.
 The digest under each version is the same on all three mirrors. Pin it
 (`...bq-reverse-proxy@sha256:...`) if you want an immutable reference.
 
+## [0.4.0] - RELEASE_DATE
+
+Image digest: `sha256:IMAGE_DIGEST`
+
+### Changed
+
+- **`/metrics` is no longer served on the proxy URL by default.** On a service
+  that allows unauthenticated calls, anyone who knew the URL could read the
+  Prometheus counters, which carry project IDs and job counts per project. The
+  endpoint is now served only when `METRICS_PORT` is set: a port of its own
+  serves it there only (not reachable from outside a Cloud Run instance; use it
+  on Kubernetes or with a collector sidecar), and the same value as `PORT`
+  keeps the old behaviour. With `METRICS_PORT` unset, `/metrics` on the proxy
+  URL answers 404. **If you scrape `/metrics` today, set `METRICS_PORT` when
+  you upgrade** (Terraform module: `extra_env = { METRICS_PORT = "..." }`).
+
+### Added
+
+- **Log events for every counter**, so the proxy can be monitored on Cloud Run
+  without scraping it. Each increment of `bq_proxy_optimize_total`,
+  `bq_proxy_fail_open_total` and `bq_proxy_reroute_total` is also written as
+  one `INFO` JSON log line with an `event` field (`optimize`, `fail_open`,
+  `reroute`) and the counter's labels as fields (`project`, `outcome`,
+  `reason`). Cloud Logging log-based metrics built on these lines give the
+  same numbers across all instances; the Terraform module creates them with
+  `create_log_metrics = true`. Needs `LOG_LEVEL` `info` (the default) or
+  `debug`.
+
 ## [0.3.1] - 2026-11-18
 
 Image digest: `sha256:565bd6d803628a15c3e2512b2f4239825a29d8af17621d10521b537f7a3c4d1e`
