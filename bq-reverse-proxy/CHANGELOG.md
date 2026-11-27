@@ -13,9 +13,9 @@ The registry is public: listing tags and pulling need no Google credentials.
 The digest under each version is the same on all three mirrors. Pin it
 (`...bq-reverse-proxy@sha256:...`) if you want an immutable reference.
 
-## [0.4.0] - RELEASE_DATE
+## [0.4.0] - 2026-11-27
 
-Image digest: `sha256:IMAGE_DIGEST`
+Image digest: `sha256:c5d1b06dd36b4583747e9245d371fceb7b3263a21840d9c39330582946b17ec2`
 
 ### Changed
 
